@@ -1,0 +1,234 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Top‑Down Rocket Game (Prototype)</title>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+  <style>body{margin:0}canvas{display:block;margin:0 auto}</style>
+</head>
+<body>
+<script>
+const url = (location.protocol === 'https:') ? 'wss://' + location.host + '/game' : 'ws://' + location.host + '/game';
+let name = prompt('Enter a username (1v1)') || ('player'+Math.floor(Math.random()*1000));
+const ws = new WebSocket(url);
+ws.onopen = () => ws.send(JSON.stringify({type:'join', name}));
+
+// create a canvas with willReadFrequently for faster readbacks
+const canvas = document.createElement('canvas');
+canvas.width = 800; canvas.height = 600;
+canvas.style.display = 'block';
+canvas.style.margin = '0 auto';
+// request a 2D context with willReadFrequently to avoid expensive readback penalties
+canvas.getContext('2d', { willReadFrequently: true });
+document.body.appendChild(canvas);
+
+const config = { type: Phaser.CANVAS, canvas: canvas, width: 800, height: 600, physics: { default: 'arcade' }, scene: { preload, create, update } };
+const game = new Phaser.Game(config);
+let cursors, spaceKey, shiftKey;
+let sprites = {};
+let currentMatch = null;
+let hudBg, nameHudText, matchHudText;
+const localState = {};
+let inputSeq = 0;
+let pendingInputs = [];
+const SEND_INTERVAL = 33; // ms (~30Hz)
+let lastSend = 0;
+
+function preload() {}
+
+function create() {
+  cursors = this.input.keyboard.createCursorKeys();
+  spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+  shiftKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
+  // HUD background and texts (small bordered panel)
+  hudBg = this.add.graphics();
+  hudBg.fillStyle(0x000000, 0.55);
+  hudBg.fillRoundedRect(6, 6, 220, 50, 6);
+  hudBg.lineStyle(2, 0xffffff, 0.9);
+  hudBg.strokeRoundedRect(6, 6, 220, 50, 6);
+  hudBg.setScrollFactor(0);
+  nameHudText = this.add.text(18, 12, 'Player: ' + name, {font:'16px Arial', fill:'#ffffff'}).setScrollFactor(0);
+  matchHudText = this.add.text(18, 32, 'Match: none', {font:'14px Arial', fill:'#ffffff'}).setScrollFactor(0);
+  this.cameras.main.setBackgroundColor('#226622');
+  // draw grassy field with stripes
+  const bg = this.add.graphics();
+  const w = this.scale.width; const h = this.scale.height;
+  // base grass
+  bg.fillStyle(0x2e8b57, 1);
+  bg.fillRect(0, 0, w, h);
+  // alternating stripes
+  const stripeWidth = 48;
+  for (let x = 0; x < w; x += stripeWidth) {
+    if (Math.floor(x / stripeWidth) % 2 === 0) bg.fillStyle(0x2aa36a, 1);
+    else bg.fillStyle(0x2e8b57, 1);
+    bg.fillRect(x, 0, stripeWidth, h);
+  }
+  // center line and circle
+  bg.lineStyle(4, 0xffffff, 0.8);
+  bg.beginPath();
+  bg.moveTo(w/2, 0); bg.lineTo(w/2, h); bg.strokePath();
+  bg.strokeCircle(w/2, h/2, 90);
+  // simple goal markers
+  bg.fillStyle(0xffffff, 0.15);
+  bg.fillRect(0, h/2 - 60, 6, 120);
+  bg.fillRect(w - 6, h/2 - 60, 6, 120);
+
+  // placeholders container
+  this.playersLayer = this.add.container();
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'matched') {
+      currentMatch = msg.match || null;
+      const opp = msg.opponent || '';
+      if (matchHudText) matchHudText.setText('Match: ' + (currentMatch ? 'vs ' + opp : 'none'));
+      return;
+    }
+    if (msg.type === 'state') {
+      // ignore global state when we're in a match, and ignore match state for other matches
+      if ((msg.match === null && currentMatch !== null) || (msg.match !== null && currentMatch !== null && msg.match !== currentMatch)) return;
+      if (msg.match !== null && currentMatch === null) return; // match state for others while we're not matched
+      onServerMessage.call(this, msg);
+    }
+  };
+}
+
+function onServerMessage(data) {
+  const state = (typeof data === 'string') ? JSON.parse(data) : data;
+    state.players.forEach(p => {
+    if (!sprites[p.name]) {
+      // shadow (separate object so it does not rotate with the car)
+      const shadow = this.add.graphics();
+      shadow.fillStyle(0x000000, 0.35);
+      shadow.fillEllipse(0, 26, 40, 14);
+      // car shape (container holds only the car graphics and name)
+      const g = this.add.graphics();
+      g.fillStyle(0x00ccff,1);
+      g.beginPath();
+      g.moveTo(20, 0);
+      g.lineTo(-16, -12);
+      g.lineTo(-16, 12);
+      g.closePath();
+      g.fillPath();
+      const s = this.add.container(p.x,p.y, [g]); s.setSize(48,48);
+      const nameText = this.add.text(0,30,p.name,{font:'12px Arial',fill:'#fff'}).setOrigin(0.5,0);
+      s.add(nameText);
+      // ensure car container is rendered above the shadow
+      shadow.setDepth(0);
+      s.setDepth(1);
+      sprites[p.name] = {container: s, graphics: g, shadow: shadow};
+      // initialize local state for prediction
+      localState[p.name] = { x: p.x, y: p.y, vx: 0, vy: 0, angle: p.angle, z: p.z, vz: 0, serverX: p.x, serverY: p.y, serverAngle: p.angle, correctionFrames: 0 };
+    }
+    const obj = sprites[p.name];
+    const s = obj.container;
+    // if this is the local player, record server position for reconciliation and don't overwrite immediately
+    if (p.name === name) {
+      if (!localState[p.name]) localState[p.name] = { x: p.x, y: p.y, vx: 0, vy: 0, angle: p.angle, z: p.z, vz: 0, serverX: p.x, serverY: p.y, serverAngle: p.angle, correctionFrames: 0 };
+      // authoritative reconciliation: server provides last processed input seq
+      const lastSeq = p.lastSeq || 0;
+      // drop acknowledged inputs and compute predicted state by replaying pending inputs on top of server state
+      const unacked = pendingInputs.filter(i => i.seq > lastSeq);
+      // start from server state
+      const predicted = { x: p.x, y: p.y, angle: p.angle, z: p.z, vx: 0, vy: 0, vz: 0 };
+      // replay pending inputs to produce predicted position
+      unacked.forEach(inp => applyInputLocal(predicted, inp, 0.033));
+      // store predicted target for smooth correction
+      localState[p.name].predictedX = predicted.x; localState[p.name].predictedY = predicted.y; localState[p.name].predictedAngle = predicted.angle; localState[p.name].predictedZ = predicted.z;
+      // keep localState as-is (don't snap). Smoothly correct over several frames
+      localState[p.name].correctionFrames = 6;
+      // replace pendingInputs with only unacked
+      pendingInputs = unacked;
+    } else {
+      // for remote players, set a target position to interpolate towards
+      if (!localState[p.name]) localState[p.name] = { x: p.x, y: p.y, angle: p.angle, targetX: p.x, targetY: p.y };
+      localState[p.name].targetX = p.x; localState[p.name].targetY = p.y; localState[p.name].targetAngle = p.angle;
+      // immediate snap if no sprite yet
+      s.x = localState[p.name].x; s.y = localState[p.name].y; s.rotation = localState[p.name].angle;
+    }
+    // exaggerate scale based on vertical height to make jumps look floaty and last longer
+    const scale = 1 + Math.min(1.0, p.z * 0.12);
+    s.setScale(scale);
+    // shadow: position under car (does not rotate), shrink and fade when in the air
+    const sh = obj.shadow;
+    sh.x = p.x;
+    sh.y = p.y + 26;
+    const shrink = Math.max(0.2, 1 - Math.min(0.9, p.z * 0.06));
+    sh.setScale(shrink);
+    sh.setAlpha(Math.max(0.08, 1 - p.z * 0.12));
+  });
+}
+
+function applyInputLocal(state, input, dt) {
+  if (!state) return;
+  const forward = input.throttle;
+  // unified physics constants (no extra match boosting)
+  const accelBase = 700.0;
+  const boostAdd = 800.0;
+  const steerBase = 3.0;
+  const jumpV = 42.0;
+  let accelMag = accelBase * forward * dt;
+  if (input.boost && (state.boostFuel === undefined || state.boostFuel > 0)) { accelMag += boostAdd * dt; state.boostFuel = (state.boostFuel||100) - 80.0 * dt; }
+  const fx = Math.cos(state.angle || 0), fy = Math.sin(state.angle || 0);
+  state.vx = (state.vx || 0) + fx * accelMag;
+  state.vy = (state.vy || 0) + fy * accelMag;
+  const speed = Math.hypot(state.vx, state.vy);
+  const steerFactor = steerBase * (1.0 + speed / 300.0);
+  state.angle = (state.angle || 0) + input.steer * steerFactor * dt;
+  // damping
+  const damping = Math.max(0.0, 1.0 - 1.8 * dt);
+  state.vx *= damping; state.vy *= damping;
+  state.x += state.vx * dt; state.y += state.vy * dt;
+  // jump
+  if (input.jump && (state.z === 0 || state.z === undefined)) { state.vz = jumpV; state.z = state.z || 0; }
+  state.vz = (state.vz || 0) - 100.0 * dt;
+  state.z = (state.z || 0) + state.vz * dt; if (state.z < 0) { state.z = 0; state.vz = 0; }
+}
+
+function update(time, delta) {
+  if (ws.readyState !== WebSocket.OPEN) return;
+  const dt = (delta || 16) / 1000.0;
+  const throttle = (cursors.up.isDown?1:(cursors.down.isDown?-1:0));
+  const steer = (cursors.left.isDown?-1:(cursors.right.isDown?1:0));
+  const jump = Phaser.Input.Keyboard.JustDown(spaceKey);
+  const boost = shiftKey.isDown;
+  const input = { throttle, steer, jump, boost };
+  // send input to server
+  inputSeq += 1;
+  const out = { type: 'input', name, seq: inputSeq, throttle, steer, jump, boost };
+  pendingInputs.push(out);
+  ws.send(JSON.stringify(out));
+  // apply locally for responsive feel
+  if (localState[name]) applyInputLocal(localState[name], input, dt);
+  // reconcile: smoothly move local state toward server authoritative state when available
+  Object.keys(localState).forEach(key => {
+    const st = localState[key];
+      if (key === name) {
+      // if we have a predicted target from reconciliation, smoothly move toward it
+      if (st.correctionFrames && st.correctionFrames > 0 && st.predictedX !== undefined) {
+        const alpha = 0.4; // smoothing factor
+        st.x = st.x + (st.predictedX - st.x) * alpha;
+        st.y = st.y + (st.predictedY - st.y) * alpha;
+        st.angle = st.angle + (st.predictedAngle - st.angle) * alpha;
+        st.correctionFrames -= 1;
+      }
+      // update sprite from local predicted state
+      const obj = sprites[key];
+      if (obj) {
+        obj.container.x = st.x; obj.container.y = st.y; obj.container.rotation = st.angle; obj.shadow.x = st.x; obj.shadow.y = st.y + 26;
+      }
+    } else {
+      // non-local players: interpolate towards server target with smoother factor
+      if (st.targetX !== undefined) {
+        const alpha = 0.18;
+        st.x = st.x + (st.targetX - st.x) * alpha;
+        st.y = st.y + (st.targetY - st.y) * alpha;
+        st.angle = (st.angle || 0) + ((st.targetAngle || 0) - (st.angle || 0)) * alpha;
+        const obj = sprites[key];
+        if (obj) { obj.container.x = st.x; obj.container.y = st.y; obj.container.rotation = st.angle; obj.shadow.x = st.x; obj.shadow.y = st.y + 26; }
+      }
+    }
+  });
+}
+</script>
+</body>
+</html>
