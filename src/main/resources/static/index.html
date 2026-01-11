@@ -27,6 +27,7 @@ const config = { type: Phaser.CANVAS, canvas: canvas, width: 800, height: 600, p
 const game = new Phaser.Game(config);
 let cursors, spaceKey, shiftKey;
 let sprites = {};
+let scoreHudText;
 let currentMatch = null;
 let hudBg, nameHudText, matchHudText;
 const localState = {};
@@ -50,6 +51,7 @@ function create() {
   hudBg.setScrollFactor(0);
   nameHudText = this.add.text(18, 12, 'Player: ' + name, {font:'16px Arial', fill:'#ffffff'}).setScrollFactor(0);
   matchHudText = this.add.text(18, 32, 'Match: none', {font:'14px Arial', fill:'#ffffff'}).setScrollFactor(0);
+  scoreHudText = this.add.text(400, 20, '0 - 0', {font:'24px Arial', fill:'#ffff00'}).setOrigin(0.5, 0).setScrollFactor(0);
   this.cameras.main.setBackgroundColor('#226622');
   // draw grassy field with stripes
   const bg = this.add.graphics();
@@ -95,6 +97,33 @@ function create() {
 
 function onServerMessage(data) {
   const state = (typeof data === 'string') ? JSON.parse(data) : data;
+  
+  // create ball sprite if needed
+  if (!sprites.ball && state.ball) {
+    const ballGraphic = this.add.graphics();
+    ballGraphic.fillStyle(0xffff00, 1);
+    ballGraphic.fillCircle(state.ball.x, state.ball.y, 10);
+    sprites.ball = { graphic: ballGraphic, x: state.ball.x, y: state.ball.y };
+  }
+  
+  // update ball position
+  if (sprites.ball && state.ball) {
+    if (!localState.ball) localState.ball = { x: state.ball.x, y: state.ball.y, vx: 0, vy: 0, lastX: state.ball.x, lastY: state.ball.y };
+    if (localState.ball.lastX !== undefined) {
+      localState.ball.vx = (state.ball.x - localState.ball.lastX) / 0.033;
+      localState.ball.vy = (state.ball.y - localState.ball.lastY) / 0.033;
+    }
+    localState.ball.lastX = state.ball.x;
+    localState.ball.lastY = state.ball.y;
+    localState.ball.targetX = state.ball.x + localState.ball.vx * 0.033;
+    localState.ball.targetY = state.ball.y + localState.ball.vy * 0.033;
+  }
+  
+  // update score
+  if (scoreHudText && state.scoreA !== undefined) {
+    scoreHudText.setText(state.scoreA + ' - ' + state.scoreB);
+  }
+  
     state.players.forEach(p => {
     if (!sprites[p.name]) {
       // shadow (separate object so it does not rotate with the car)
@@ -190,14 +219,24 @@ function update(time, delta) {
     if (st.targetX !== undefined) {
       st.x = st.x + (st.targetX - st.x) * 0.15;
       st.y = st.y + (st.targetY - st.y) * 0.15;
-      st.angle = (st.angle || 0) + ((st.targetAngle || 0) - (st.angle || 0)) * 0.15;
-      st.z = (st.z || 0) + ((st.targetZ || 0) - (st.z || 0)) * 0.15;
-      const obj = sprites[key];
-      if (obj) { 
-        obj.container.x = st.x; obj.container.y = st.y; obj.container.rotation = st.angle; 
-        obj.shadow.x = st.x; obj.shadow.y = st.y + 26; 
-        const scale = 1 + Math.min(1.0, st.z * 0.12);
-        obj.container.setScale(scale);
+      if (key === 'ball') {
+        // ball rendering
+        if (sprites.ball) {
+          sprites.ball.graphic.clear();
+          sprites.ball.graphic.fillStyle(0xffff00, 1);
+          sprites.ball.graphic.fillCircle(st.x, st.y, 10);
+        }
+      } else {
+        // player rendering
+        st.angle = (st.angle || 0) + ((st.targetAngle || 0) - (st.angle || 0)) * 0.15;
+        st.z = (st.z || 0) + ((st.targetZ || 0) - (st.z || 0)) * 0.15;
+        const obj = sprites[key];
+        if (obj) { 
+          obj.container.x = st.x; obj.container.y = st.y; obj.container.rotation = st.angle; 
+          obj.shadow.x = st.x; obj.shadow.y = st.y + 26; 
+          const scale = 1 + Math.min(1.0, st.z * 0.12);
+          obj.container.setScale(scale);
+        }
       }
     }
   });

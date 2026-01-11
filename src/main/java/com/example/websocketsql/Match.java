@@ -24,15 +24,21 @@ public class Match {
     private final GameRepository repo;
     private int tickCounter = 0;
     private static final int BROADCAST_SKIP = 1; // send state every N ticks
+    private Ball ball;
+    private int scoreA = 0, scoreB = 0;
+    private String playerA = null, playerB = null;
 
     public Match(GameRepository repo) {
         this.repo = repo;
+        this.ball = new Ball();
         executor.scheduleAtFixedRate(this::tick, 0, 33, TimeUnit.MILLISECONDS);
     }
 
     public void addPlayer(String name, WebSocketSession session) {
         sessions.put(name, session);
         players.putIfAbsent(name, PlayerState.spawn(name));
+        if (playerA == null) playerA = name;
+        else if (playerB == null) playerB = name;
         // notify this session that it has been matched
         try {
             String json = "{\"type\":\"matched\",\"match\":\"" + id + "\",\"name\":\"" + name + "\"}";
@@ -72,6 +78,17 @@ public class Match {
             double dt = 0.033;
             long tickId = System.currentTimeMillis();
             tickCounter++;
+            // advance ball physics
+            ball.update(dt);
+            // ball-wall collision
+            if (ball.x < 10) { ball.x = 10; ball.vx = -ball.vx * 0.8; }
+            if (ball.x > 790) { ball.x = 790; ball.vx = -ball.vx * 0.8; }
+            if (ball.y < 10) { ball.y = 10; ball.vy = -ball.vy * 0.8; }
+            if (ball.y > 590) { ball.y = 590; ball.vy = -ball.vy * 0.8; }
+            // check goals (left/right ends)
+            if (ball.x < 5 && playerA != null) { scoreB++; ball.reset(); }
+            if (ball.x > 795 && playerB != null) { scoreA++; ball.reset(); }
+            
             // always advance physics and persist positions each tick
             for (Map.Entry<String, PlayerState> e : players.entrySet()) {
                 String name = e.getKey();
@@ -80,6 +97,22 @@ public class Match {
                 p.applyInput(in, dt);
                 p.lastAppliedSeq = in.seq;
                 repo.enqueuePosition(name, tickId, p.x, p.y, p.z, p.vx, p.vy, p.vz);
+                // ball-player collision
+                double dx = ball.x - p.x, dy = ball.y - p.y;
+                double dist = Math.hypot(dx, dy);
+                double minDist = 25 + 10; // player radius + ball radius
+                if (dist < minDist) {
+                    // transfer player momentum to ball
+                    double speed = Math.hypot(p.vx, p.vy);
+                    if (speed > 0) {
+                        ball.vx = (p.vx / speed) * (speed * 0.5);
+                        ball.vy = (p.vy / speed) * (speed * 0.5);
+                    }
+                    // push ball away from player
+                    double nx = dx / dist, ny = dy / dist;
+                    ball.x = p.x + nx * minDist;
+                    ball.y = p.y + ny * minDist;
+                }
             }
             // only build and broadcast visual state every BROADCAST_SKIP ticks
             if (tickCounter % BROADCAST_SKIP == 0) {
@@ -88,6 +121,8 @@ public class Match {
                 sb.append("\"type\":\"state\",");
                 sb.append("\"match\":\"").append(id).append("\",");
                 sb.append("\"tick\":").append(tickId).append(',');
+                sb.append("\"scoreA\":").append(scoreA).append(",\"scoreB\":").append(scoreB).append(',');
+                sb.append("\"ball\":{\"x\":").append(ball.x).append(",\"y\":").append(ball.y).append("},");
                 sb.append("\"players\":[");
                 boolean first = true;
                 for (Map.Entry<String, PlayerState> e : players.entrySet()) {
@@ -172,4 +207,15 @@ public class Match {
 
     // simple serializable input container
     public static class PlayerInput { public final int seq; public final double throttle, steer; public final boolean jump, boost; public PlayerInput(int seq,double t,double s,boolean j,boolean b){ this.seq=seq; throttle=t;steer=s;jump=j;boost=b;} }
+
+    private static class Ball {
+        double x = 400, y = 300, vx = 0, vy = 0;
+        void update(double dt) {
+            vx *= 0.98; // damping
+            vy *= 0.98;
+            x += vx * dt;
+            y += vy * dt;
+        }
+        void reset() { x = 400; y = 300; vx = 0; vy = 0; }
+    }
 }
