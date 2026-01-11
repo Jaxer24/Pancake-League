@@ -9,7 +9,7 @@
 <body>
 <script>
 //const url = (location.protocol === 'https:') ? 'wss://' + location.host + '/game' : 'ws://' + location.host + '/game';
-const url = 'web-production-061b2.up.railway.app';
+const url = 'wss://web-production-061b2.up.railway.app/game';
 let name = prompt('Enter a username (1v1)') || ('player'+Math.floor(Math.random()*1000));
 const ws = new WebSocket(url);
 ws.onopen = () => ws.send(JSON.stringify({type:'join', name}));
@@ -127,18 +127,13 @@ function onServerMessage(data) {
       if (!localState[p.name]) localState[p.name] = { x: p.x, y: p.y, vx: 0, vy: 0, angle: p.angle, z: p.z, vz: 0, serverX: p.x, serverY: p.y, serverAngle: p.angle, correctionFrames: 0 };
       // authoritative reconciliation: server provides last processed input seq
       const lastSeq = p.lastSeq || 0;
-      // drop acknowledged inputs and compute predicted state by replaying pending inputs on top of server state
-      const unacked = pendingInputs.filter(i => i.seq > lastSeq);
-      // start from server state
-      const predicted = { x: p.x, y: p.y, angle: p.angle, z: p.z, vx: 0, vy: 0, vz: 0 };
-      // replay pending inputs to produce predicted position
-      unacked.forEach(inp => applyInputLocal(predicted, inp, 0.033));
-      // store predicted target for smooth correction
-      localState[p.name].predictedX = predicted.x; localState[p.name].predictedY = predicted.y; localState[p.name].predictedAngle = predicted.angle; localState[p.name].predictedZ = predicted.z;
-      // keep localState as-is (don't snap). Smoothly correct over several frames
-      localState[p.name].correctionFrames = 6;
-      // replace pendingInputs with only unacked
-      pendingInputs = unacked;
+      // reset local state to server position
+      localState[p.name].x = p.x; localState[p.name].y = p.y; localState[p.name].angle = p.angle; localState[p.name].z = p.z;
+      // drop acknowledged inputs
+      pendingInputs = pendingInputs.filter(i => i.seq > lastSeq);
+      // reapply remaining pending inputs to local state
+      pendingInputs.forEach(inp => applyInputLocal(localState[p.name], inp, 0.033));
+      localState[p.name].correctionFrames = 0;
     } else {
       // for remote players, set a target position to interpolate towards
       if (!localState[p.name]) localState[p.name] = { x: p.x, y: p.y, angle: p.angle, targetX: p.x, targetY: p.y };
@@ -162,25 +157,20 @@ function onServerMessage(data) {
 function applyInputLocal(state, input, dt) {
   if (!state) return;
   const forward = input.throttle;
-  // unified physics constants (no extra match boosting)
-  const accelBase = 700.0;
-  const boostAdd = 800.0;
-  const steerBase = 3.0;
-  const jumpV = 42.0;
-  let accelMag = accelBase * forward * dt;
-  if (input.boost && (state.boostFuel === undefined || state.boostFuel > 0)) { accelMag += boostAdd * dt; state.boostFuel = (state.boostFuel||100) - 80.0 * dt; }
+  let accelMag = 900.0 * forward * dt;
+  if (input.boost && (state.boostFuel === undefined || state.boostFuel > 0)) { accelMag += 1000.0 * dt; state.boostFuel = (state.boostFuel||100) - 80.0 * dt; }
   const fx = Math.cos(state.angle || 0), fy = Math.sin(state.angle || 0);
   state.vx = (state.vx || 0) + fx * accelMag;
   state.vy = (state.vy || 0) + fy * accelMag;
   const speed = Math.hypot(state.vx, state.vy);
-  const steerFactor = steerBase * (1.0 + speed / 300.0);
+  const steerFactor = 3.0 * (1.0 + speed / 300.0);
   state.angle = (state.angle || 0) + input.steer * steerFactor * dt;
   // damping
   const damping = Math.max(0.0, 1.0 - 1.8 * dt);
   state.vx *= damping; state.vy *= damping;
   state.x += state.vx * dt; state.y += state.vy * dt;
   // jump
-  if (input.jump && (state.z === 0 || state.z === undefined)) { state.vz = jumpV; state.z = state.z || 0; }
+  if (input.jump && (state.z === 0 || state.z === undefined)) { state.vz = 30.0; state.z = state.z || 0; }
   state.vz = (state.vz || 0) - 100.0 * dt;
   state.z = (state.z || 0) + state.vz * dt; if (state.z < 0) { state.z = 0; state.vz = 0; }
 }
@@ -203,27 +193,18 @@ function update(time, delta) {
   // reconcile: smoothly move local state toward server authoritative state when available
   Object.keys(localState).forEach(key => {
     const st = localState[key];
-      if (key === name) {
-      // if we have a predicted target from reconciliation, smoothly move toward it
-      if (st.correctionFrames && st.correctionFrames > 0 && st.predictedX !== undefined) {
-        const alpha = 0.4; // smoothing factor
-        st.x = st.x + (st.predictedX - st.x) * alpha;
-        st.y = st.y + (st.predictedY - st.y) * alpha;
-        st.angle = st.angle + (st.predictedAngle - st.angle) * alpha;
-        st.correctionFrames -= 1;
-      }
+    if (key === name) {
       // update sprite from local predicted state
       const obj = sprites[key];
       if (obj) {
         obj.container.x = st.x; obj.container.y = st.y; obj.container.rotation = st.angle; obj.shadow.x = st.x; obj.shadow.y = st.y + 26;
       }
     } else {
-      // non-local players: interpolate towards server target with smoother factor
+      // non-local players: interpolate towards server target
       if (st.targetX !== undefined) {
-        const alpha = 0.18;
-        st.x = st.x + (st.targetX - st.x) * alpha;
-        st.y = st.y + (st.targetY - st.y) * alpha;
-        st.angle = (st.angle || 0) + ((st.targetAngle || 0) - (st.angle || 0)) * alpha;
+        st.x = st.x + (st.targetX - st.x) * 0.2;
+        st.y = st.y + (st.targetY - st.y) * 0.2;
+        st.angle = (st.angle || 0) + ((st.targetAngle || 0) - (st.angle || 0)) * 0.2;
         const obj = sprites[key];
         if (obj) { obj.container.x = st.x; obj.container.y = st.y; obj.container.rotation = st.angle; obj.shadow.x = st.x; obj.shadow.y = st.y + 26; }
       }
