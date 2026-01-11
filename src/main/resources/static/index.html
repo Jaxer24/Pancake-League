@@ -8,7 +8,8 @@
 </head>
 <body>
 <script>
-const url = (location.protocol === 'https:') ? 'wss://' + location.host + '/game' : 'ws://' + location.host + '/game';
+//const url = (location.protocol === 'https:') ? 'wss://' + location.host + '/game' : 'ws://' + location.host + '/game';
+const url = 'web-production-061b2.up.railway.app';
 let name = prompt('Enter a username (1v1)') || ('player'+Math.floor(Math.random()*1000));
 const ws = new WebSocket(url);
 ws.onopen = () => ws.send(JSON.stringify({type:'join', name}));
