@@ -122,25 +122,23 @@ function onServerMessage(data) {
     }
     const obj = sprites[p.name];
     const s = obj.container;
-    // if this is the local player, record server position for reconciliation and don't overwrite immediately
-    if (p.name === name) {
-      if (!localState[p.name]) localState[p.name] = { x: p.x, y: p.y, vx: 0, vy: 0, angle: p.angle, z: p.z, vz: 0, serverX: p.x, serverY: p.y, serverAngle: p.angle, correctionFrames: 0 };
-      // authoritative reconciliation: server provides last processed input seq
-      const lastSeq = p.lastSeq || 0;
-      // reset local state to server position
-      localState[p.name].x = p.x; localState[p.name].y = p.y; localState[p.name].angle = p.angle; localState[p.name].z = p.z;
-      // drop acknowledged inputs
-      pendingInputs = pendingInputs.filter(i => i.seq > lastSeq);
-      // reapply remaining pending inputs to local state
-      pendingInputs.forEach(inp => applyInputLocal(localState[p.name], inp, 0.033));
-      localState[p.name].correctionFrames = 0;
-    } else {
-      // for remote players, set a target position to interpolate towards
-      if (!localState[p.name]) localState[p.name] = { x: p.x, y: p.y, angle: p.angle, targetX: p.x, targetY: p.y };
-      localState[p.name].targetX = p.x; localState[p.name].targetY = p.y; localState[p.name].targetAngle = p.angle;
-      // immediate snap if no sprite yet
-      s.x = localState[p.name].x; s.y = localState[p.name].y; s.rotation = localState[p.name].angle;
+    // all players: use server position with extrapolation based on velocity
+    if (!localState[p.name]) localState[p.name] = { x: p.x, y: p.y, angle: p.angle, z: p.z, vx: 0, vy: 0, lastX: p.x, lastY: p.y };
+    
+    // estimate velocity from last server state (position delta)
+    const dt_since_update = 0.033; // assume ~33ms between ticks
+    if (localState[p.name].lastX !== undefined) {
+      localState[p.name].vx = (p.x - localState[p.name].lastX) / dt_since_update;
+      localState[p.name].vy = (p.y - localState[p.name].lastY) / dt_since_update;
     }
+    localState[p.name].lastX = p.x;
+    localState[p.name].lastY = p.y;
+    
+    // set target to extrapolated position (where they likely are now)
+    localState[p.name].targetX = p.x + localState[p.name].vx * 0.033;
+    localState[p.name].targetY = p.y + localState[p.name].vy * 0.033;
+    localState[p.name].targetAngle = p.angle;
+    localState[p.name].targetZ = p.z;
     // exaggerate scale based on vertical height to make jumps look floaty and last longer
     const scale = 1 + Math.min(1.0, p.z * 0.12);
     s.setScale(scale);
@@ -182,31 +180,24 @@ function update(time, delta) {
   const steer = (cursors.left.isDown?-1:(cursors.right.isDown?1:0));
   const jump = Phaser.Input.Keyboard.JustDown(spaceKey);
   const boost = shiftKey.isDown;
-  const input = { throttle, steer, jump, boost };
   // send input to server
   inputSeq += 1;
   const out = { type: 'input', name, seq: inputSeq, throttle, steer, jump, boost };
-  pendingInputs.push(out);
   ws.send(JSON.stringify(out));
-  // apply locally for responsive feel
-  if (localState[name]) applyInputLocal(localState[name], input, dt);
-  // reconcile: smoothly move local state toward server authoritative state when available
+  // update all sprites: interpolate smoothly toward extrapolated server position
   Object.keys(localState).forEach(key => {
     const st = localState[key];
-    if (key === name) {
-      // update sprite from local predicted state
+    if (st.targetX !== undefined) {
+      st.x = st.x + (st.targetX - st.x) * 0.15;
+      st.y = st.y + (st.targetY - st.y) * 0.15;
+      st.angle = (st.angle || 0) + ((st.targetAngle || 0) - (st.angle || 0)) * 0.15;
+      st.z = (st.z || 0) + ((st.targetZ || 0) - (st.z || 0)) * 0.15;
       const obj = sprites[key];
-      if (obj) {
-        obj.container.x = st.x; obj.container.y = st.y; obj.container.rotation = st.angle; obj.shadow.x = st.x; obj.shadow.y = st.y + 26;
-      }
-    } else {
-      // non-local players: interpolate towards server target
-      if (st.targetX !== undefined) {
-        st.x = st.x + (st.targetX - st.x) * 0.15;
-        st.y = st.y + (st.targetY - st.y) * 0.15;
-        st.angle = (st.angle || 0) + ((st.targetAngle || 0) - (st.angle || 0)) * 0.15;
-        const obj = sprites[key];
-        if (obj) { obj.container.x = st.x; obj.container.y = st.y; obj.container.rotation = st.angle; obj.shadow.x = st.x; obj.shadow.y = st.y + 26; }
+      if (obj) { 
+        obj.container.x = st.x; obj.container.y = st.y; obj.container.rotation = st.angle; 
+        obj.shadow.x = st.x; obj.shadow.y = st.y + 26; 
+        const scale = 1 + Math.min(1.0, st.z * 0.12);
+        obj.container.setScale(scale);
       }
     }
   });
