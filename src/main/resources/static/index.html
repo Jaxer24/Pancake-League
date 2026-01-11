@@ -166,7 +166,7 @@ function applyInputLocal(state, input, dt) {
   const steerFactor = 3.0 * (1.0 + speed / 300.0);
   state.angle = (state.angle || 0) + input.steer * steerFactor * dt;
   // damping
-  const damping = Math.max(0.0, 1.0 - 1.8 * dt);
+  const damping = Math.max(0.0, 1.0 - 1.2 * dt);
   state.vx *= damping; state.vy *= damping;
   state.x += state.vx * dt; state.y += state.vy * dt;
   // jump
@@ -202,9 +202,9 @@ function update(time, delta) {
     } else {
       // non-local players: interpolate towards server target
       if (st.targetX !== undefined) {
-        st.x = st.x + (st.targetX - st.x) * 0.2;
-        st.y = st.y + (st.targetY - st.y) * 0.2;
-        st.angle = (st.angle || 0) + ((st.targetAngle || 0) - (st.angle || 0)) * 0.2;
+        st.x = st.x + (st.targetX - st.x) * 0.15;
+        st.y = st.y + (st.targetY - st.y) * 0.15;
+        st.angle = (st.angle || 0) + ((st.targetAngle || 0) - (st.angle || 0)) * 0.15;
         const obj = sprites[key];
         if (obj) { obj.container.x = st.x; obj.container.y = st.y; obj.container.rotation = st.angle; obj.shadow.x = st.x; obj.shadow.y = st.y + 26; }
       }
