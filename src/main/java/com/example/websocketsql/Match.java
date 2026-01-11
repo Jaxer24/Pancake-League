@@ -23,7 +23,7 @@ public class Match {
     private final ExecutorService sendExecutor = Executors.newSingleThreadExecutor(r -> { Thread t = new Thread(r, "match-sender-"+id); t.setDaemon(true); return t; });
     private final GameRepository repo;
     private int tickCounter = 0;
-    private static final int BROADCAST_SKIP = 2; // send state every N ticks
+    private static final int BROADCAST_SKIP = 1; // send state every N ticks
 
     public Match(GameRepository repo) {
         this.repo = repo;

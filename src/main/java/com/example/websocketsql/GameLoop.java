@@ -19,7 +19,7 @@ public class GameLoop {
     private final ObjectMapper mapper = new ObjectMapper();
 
     private long tick = 0;
-    private static final int BROADCAST_SKIP = 2; // send state every N ticks
+    private static final int BROADCAST_SKIP = 1; // send state every N ticks
 
     public GameLoop(GameRepository repo, @Lazy GameHandler handler, MatchManager matchManager) {
         this.repo = repo;
