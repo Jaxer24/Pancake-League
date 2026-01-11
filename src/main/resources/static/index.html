@@ -158,7 +158,7 @@ function applyInputLocal(state, input, dt) {
   if (!state) return;
   const forward = input.throttle;
   let accelMag = 700.0 * forward * dt;
-  if (input.boost && (state.boostFuel === undefined || state.boostFuel > 0)) { accelMag += 800.0 * dt; state.boostFuel = (state.boostFuel||100) - 80.0 * dt; }
+  if (input.boost && (state.boostFuel === undefined || state.boostFuel > 0)) { accelMag += 800.0 * dt; state.boostFuel = (state.boostFuel||100) - 40.0 * dt; }
   const fx = Math.cos(state.angle || 0), fy = Math.sin(state.angle || 0);
   state.vx = (state.vx || 0) + fx * accelMag;
   state.vy = (state.vy || 0) + fy * accelMag;
@@ -170,7 +170,7 @@ function applyInputLocal(state, input, dt) {
   state.vx *= damping; state.vy *= damping;
   state.x += state.vx * dt; state.y += state.vy * dt;
   // jump
-  if (input.jump && (state.z === 0 || state.z === undefined)) { state.vz = 30.0; state.z = state.z || 0; }
+  if (input.jump && (state.z === 0 || state.z === undefined)) { state.vz = 42.0; state.z = state.z || 0; }
   state.vz = (state.vz || 0) - 100.0 * dt;
   state.z = (state.z || 0) + state.vz * dt; if (state.z < 0) { state.z = 0; state.vz = 0; }
 }
