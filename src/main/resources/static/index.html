@@ -157,8 +157,8 @@ function onServerMessage(data) {
 function applyInputLocal(state, input, dt) {
   if (!state) return;
   const forward = input.throttle;
-  let accelMag = 900.0 * forward * dt;
-  if (input.boost && (state.boostFuel === undefined || state.boostFuel > 0)) { accelMag += 1000.0 * dt; state.boostFuel = (state.boostFuel||100) - 80.0 * dt; }
+  let accelMag = 700.0 * forward * dt;
+  if (input.boost && (state.boostFuel === undefined || state.boostFuel > 0)) { accelMag += 800.0 * dt; state.boostFuel = (state.boostFuel||100) - 80.0 * dt; }
   const fx = Math.cos(state.angle || 0), fy = Math.sin(state.angle || 0);
   state.vx = (state.vx || 0) + fx * accelMag;
   state.vy = (state.vy || 0) + fy * accelMag;
