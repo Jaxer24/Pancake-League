@@ -1,5 +1,6 @@
 package com.example.websocketsql;
 
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -22,12 +23,14 @@ public class MessageHandler extends TextWebSocketHandler {
     }
 
     @Override
-    public void afterConnectionEstablished(WebSocketSession session) throws Exception {
+    public void afterConnectionEstablished(@NonNull WebSocketSession session) throws Exception {
         sessions.add(session);
         // send existing messages
         repository.findAll().forEach(m -> {
             try {
-                session.sendMessage(new TextMessage(m));
+                @SuppressWarnings("null")
+                TextMessage msg = new TextMessage((CharSequence) m);
+                session.sendMessage(msg);
             } catch (IOException e) {
                 // ignore
             }
@@ -35,7 +38,8 @@ public class MessageHandler extends TextWebSocketHandler {
     }
 
     @Override
-    protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
+    @SuppressWarnings("null")
+    protected void handleTextMessage(@NonNull WebSocketSession session, @NonNull TextMessage message) throws Exception {
         String payload = message.getPayload();
         repository.save(payload);
         broadcast(payload);
@@ -45,7 +49,9 @@ public class MessageHandler extends TextWebSocketHandler {
         synchronized (sessions) {
             sessions.forEach(s -> {
                 try {
-                    if (s.isOpen()) s.sendMessage(new TextMessage(msg));
+                    @SuppressWarnings("null")
+                    TextMessage textMsg = new TextMessage((CharSequence) msg);
+                    if (s.isOpen()) s.sendMessage(textMsg);
                 } catch (IOException e) {
                     // ignore individual failures
                 }
@@ -54,7 +60,7 @@ public class MessageHandler extends TextWebSocketHandler {
     }
 
     @Override
-    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
+    public void afterConnectionClosed(@NonNull WebSocketSession session, @NonNull CloseStatus status) throws Exception {
         sessions.remove(session);
     }
 }
