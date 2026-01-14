@@ -65,19 +65,20 @@ public class Match {
         }
         // notify this session that it has been matched
         try {
-            String json = "{\"type\":\"matched\",\"match\":\"" + id + "\",\"name\":\"" + name + "\"}";
+            String json = "{\"type\":\"matched\",\"match\":\"" + id + "\",\"playerA\":\"" + playerA + "\",\"playerB\":\"" + playerB + "\"}";
             if (session != null && session.isOpen()) session.sendMessage(new TextMessage(json));
         } catch (IOException ignored) {}
-        // if two players present, notify both with opponent name
-        if (sessions.size() == 2) {
-            String[] names = sessions.keySet().toArray(new String[0]);
-            String a = names[0], b = names[1];
-            WebSocketSession sa = sessions.get(a); WebSocketSession sb = sessions.get(b);
+        // if two players present, notify both with playerA/playerB
+        if (sessions.size() == 2 && playerA != null && playerB != null) {
+            WebSocketSession sa = sessions.get(playerA);
+            WebSocketSession sb = sessions.get(playerB);
+            String matchInfo = String.format(
+                "{\"type\":\"matched\",\"match\":\"%s\",\"playerA\":\"%s\",\"playerB\":\"%s\"}",
+                id, playerA, playerB
+            );
             try {
-                String ja = "{\"type\":\"matched\",\"match\":\""+id+"\",\"name\":\""+a+"\",\"opponent\":\""+b+"\"}";
-                String jb = "{\"type\":\"matched\",\"match\":\""+id+"\",\"name\":\""+b+"\",\"opponent\":\""+a+"\"}";
-                if (sa != null && sa.isOpen()) sa.sendMessage(new TextMessage(ja));
-                if (sb != null && sb.isOpen()) sb.sendMessage(new TextMessage(jb));
+                if (sa != null && sa.isOpen()) sa.sendMessage(new TextMessage(matchInfo));
+                if (sb != null && sb.isOpen()) sb.sendMessage(new TextMessage(matchInfo));
             } catch (IOException ignored) {}
             // Start countdown if both players present and not already running
             if (roundFrozen) {
@@ -640,14 +641,7 @@ public class Match {
             if (Math.abs(this.vx) < 1.0) this.vx = 0.0; if (Math.abs(this.vy) < 1.0) this.vy = 0.0;
             if (pendingJump && z<=0.001) { vz = 42; pendingJump = false; }
             if (in.jump && z<=0.001) {
-                // Stop boost if jumping from ground
-                if (in.boost && boostFuel > 0) {
-                    // Option 1: forcibly set boostFuel to 0 for this frame (prevents boost effect)
-                    // boostFuel = 0;
-                    // Option 2: just skip boost for this frame (recommended)
-                    // No need to do anything, as boostLockActive will be false at z=0
-                }
-                vz = 32;
+                vz = 42;
             }
             if (boostLockActive) {
                 // Lock z/vz while boosting in air with fuel

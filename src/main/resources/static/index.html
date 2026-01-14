@@ -13,9 +13,10 @@
   <div><b>Space</b>: Jump</div>
   <div><b>Z</b>: Brake</div>
 </div>
-<div id="scoreboard-player" style="position:absolute; left:18px; top:18px; min-width:100px; color:#fff; background:#0074D9; border-radius:12px; padding:10px 22px; font-size:1.25em; font-weight:900; letter-spacing:1px; z-index:12; box-shadow:0 2px 8px #0074D988; pointer-events:none; text-align:left;"></div>
-<div id="scoreboard-opp" style="position:absolute; right:18px; top:18px; min-width:100px; color:#fff; background:#FF4136; border-radius:12px; padding:10px 22px; font-size:1.25em; font-weight:900; letter-spacing:1px; z-index:12; box-shadow:0 2px 8px #FF413688; pointer-events:none; text-align:right;"></div>
-<div id="scoreboard-score" style="position:absolute; left:50%; top:18px; transform:translateX(-50%); min-width:90px; color:#ffff00; background:rgba(0,0,0,0.25); border-radius:12px; font-size:2.7em; font-weight:900; text-shadow:2px 2px 6px #000, 0 0 2px #fff; padding:10px 32px; border:2px solid #fff; letter-spacing:2px; z-index:12; pointer-events:none; text-align:center;"></div>
+<div id="scoreboard-player" style="position:absolute; left:18px; top:18px; min-width:100px; color:#fff; background:#0074D9; border-radius:12px; padding:8px 16px; font-size:1.15em; font-weight:900; letter-spacing:1px; z-index:12; box-shadow:0 2px 8px #0074D988; pointer-events:none; text-align:left;"></div>
+<div id="scoreboard-player-score" style="position:absolute; left:18px; top:54px; min-width:100px; color:#ffff00; background:rgba(0,0,0,0.18); border-radius:8px; font-size:1.15em; font-weight:900; text-shadow:2px 2px 6px #000, 0 0 2px #fff; padding:4px 16px; border:1px solid #fff; letter-spacing:1px; z-index:12; pointer-events:none; text-align:left;"></div>
+<div id="scoreboard-opp" style="position:absolute; right:18px; top:18px; min-width:100px; color:#fff; background:#FF4136; border-radius:12px; padding:8px 16px; font-size:1.15em; font-weight:900; letter-spacing:1px; z-index:12; box-shadow:0 2px 8px #FF413688; pointer-events:none; text-align:right;"></div>
+<div id="scoreboard-opp-score" style="position:absolute; right:18px; top:54px; min-width:100px; color:#ffff00; background:rgba(0,0,0,0.18); border-radius:8px; font-size:1.15em; font-weight:900; text-shadow:2px 2px 6px #000, 0 0 2px #fff; padding:4px 16px; border:1px solid #fff; letter-spacing:1px; z-index:12; pointer-events:none; text-align:right;"></div>
 <script>
 const url = (location.protocol === 'https:') ? 'wss://' + location.host + '/game' : 'ws://' + location.host + '/game';
 let name = prompt('Enter a username (1v1)') || ('player'+Math.floor(Math.random()*1000));
@@ -359,8 +360,9 @@ function create() {
     const msg = JSON.parse(e.data);
     if (msg.type === 'matched') {
       currentMatch = msg.match || null;
-      const opp = msg.opponent || '';
-      if (matchHudText) matchHudText.setText('Match: ' + (currentMatch ? 'vs ' + opp : 'none'));
+      window.playerA = msg.playerA;
+      window.playerB = msg.playerB;
+      if (matchHudText) matchHudText.setText('Match: ' + (currentMatch ? 'vs ' + window.playerB : 'none'));
       return;
     }
     if (msg.type === 'state') {
@@ -564,7 +566,7 @@ function onServerMessage(data) {
 
     // check if a goal was scored (still show GOAL! effect in-canvas)
     if (newScoreA > prevScoreA || newScoreB > prevScoreB) {
-      const goalText = this.add.text(400, 300, 'GOAL!', {font: 'bold 80px Arial', fill: '#ffff00', stroke: '#000000', strokeThickness: 4}).setOrigin(0.5).setAlpha(1);
+      const goalText = this.add.text(520, 300, 'GOAL!', {font: 'bold 80px Arial', fill: '#ffff00', stroke: '#000000', strokeThickness: 4}).setOrigin(0.5).setAlpha(1);
       this.tweens.add({targets: goalText, alpha: 0, duration: 1500, ease: 'Cubic.easeOut', onComplete: () => goalText.destroy()});
       for (let i = 0; i < 8; i++) {
         const particle = this.add.circle(400 + Math.random()*100 - 50, 300, 4, 0xffff00);
@@ -573,27 +575,15 @@ function onServerMessage(data) {
     }
 
     // Update HTML scoreboard
-    document.getElementById('scoreboard-score').textContent = newScoreA + ' : ' + newScoreB;
+    document.getElementById('scoreboard-player-score').textContent = newScoreA;
+    document.getElementById('scoreboard-opp-score').textContent = newScoreB;
     localState.scoreA = newScoreA;
     localState.scoreB = newScoreB;
 
     // Update player names
-    if (state.players) {
-      let playerName = '';
-      let oppName = '';
-      if (state.players.length === 2) {
-        if (state.players[0].name === name) {
-          playerName = state.players[0].name;
-          oppName = state.players[1].name;
-        } else {
-          playerName = state.players[1].name;
-          oppName = state.players[0].name;
-        }
-      } else if (state.players.length === 1) {
-        playerName = state.players[0].name;
-      }
-      document.getElementById('scoreboard-player').textContent = playerName;
-      document.getElementById('scoreboard-opp').textContent = oppName;
+    if (typeof window.playerA !== 'undefined' && typeof window.playerB !== 'undefined') {
+      document.getElementById('scoreboard-player').textContent = window.playerA;
+      document.getElementById('scoreboard-opp').textContent = window.playerB;
     }
   }
   

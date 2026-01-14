@@ -418,12 +418,10 @@ public class GameLoop {
             if (Math.abs(vx) < 1.0) vx = 0.0;
             if (Math.abs(vy) < 1.0) vy = 0.0;
 
-            // jump initiation: consume pendingJump if on ground
-            if (pendingJump && z <= 0.001) {
-                // single-player jump velocity (higher)
+            // jump initiation: always jump if jump is pressed and on ground
+            if (in.jump && z <= 0.001) {
                 vz = 42.0;
-                pendingJump = false;
-                System.out.println("[GameLoop] Jump triggered for player=" + name + " z=" + z + " vx=" + vx + " vy=" + vy);
+                System.out.println("[GameLoop] Standard jump for player=" + name + " z=" + z + " vx=" + vx + " vy=" + vy);
             }
 
             // apply gravity and small air assist if boosting; stronger gravity shortens airtime
