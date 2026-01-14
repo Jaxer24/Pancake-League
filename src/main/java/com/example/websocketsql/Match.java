@@ -68,11 +68,7 @@ public class Match {
             String json = "{\"type\":\"matched\",\"match\":\"" + id + "\",\"playerA\":\"" + playerA + "\",\"playerB\":\"" + playerB + "\"}";
             if (session != null && session.isOpen()) session.sendMessage(new TextMessage(json));
         } catch (IOException ignored) {}
-<<<<<<< HEAD
-        // if two players present, notify both with playerA/playerB
-=======
-        // if two players present, notify both with opponent name, using playerA and playerB directly
->>>>>>> 1a1841d8d1afe89cb8fb75794d2cae55c3d5ab2b
+
         if (sessions.size() == 2 && playerA != null && playerB != null) {
             WebSocketSession sa = sessions.get(playerA);
             WebSocketSession sb = sessions.get(playerB);
