@@ -22,6 +22,30 @@ public class MatchManager {
         if (playerMatch.containsKey(name)) return;
         pendingSessions.put(name, session);
         queue.add(name);
+
+        // Check for any existing single-player matches
+        String otherWaiting = null;
+        for (String queued : queue) {
+            if (!queued.equals(name)) {
+                otherWaiting = queued;
+                break;
+            }
+        }
+        if (otherWaiting != null) {
+            // Remove both from queue
+            queue.remove(name);
+            queue.remove(otherWaiting);
+            // Create or reuse a match
+            Match m = new Match(repo);
+            matches.put(m.id, m);
+            playerMatch.put(name, m);
+            playerMatch.put(otherWaiting, m);
+            WebSocketSession sa = pendingSessions.remove(name);
+            WebSocketSession sb = pendingSessions.remove(otherWaiting);
+            if (sa != null) m.addPlayer(name, sa);
+            if (sb != null) m.addPlayer(otherWaiting, sb);
+            return;
+        }
         tryPair();
     }
 
