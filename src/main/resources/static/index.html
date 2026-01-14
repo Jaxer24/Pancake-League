@@ -773,7 +773,10 @@ function applyInputLocal(state, input, dt) {
       state.vx *= scale;
       state.vy *= scale;
     }
-    const steerFactor = 3.0 * (1.0 + speed / 300.0);
+    let steerFactor = 2.0 * (1.0 + speed / 300.0);
+    if (input.brake) {
+      steerFactor *= 1.5; // Increase turn speed by 50% when braking (matches backend)
+    }
     state.angle = (state.angle || 0) + input.steer * steerFactor * dt;
     // damping
     const damping = Math.max(0.0, 1.0 - 1.2 * dt);
