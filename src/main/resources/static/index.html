@@ -359,8 +359,9 @@ function create() {
     const msg = JSON.parse(e.data);
     if (msg.type === 'matched') {
       currentMatch = msg.match || null;
-      const opp = msg.opponent || '';
-      if (matchHudText) matchHudText.setText('Match: ' + (currentMatch ? 'vs ' + opp : 'none'));
+      window.playerA = msg.playerA;
+      window.playerB = msg.playerB;
+      if (matchHudText) matchHudText.setText('Match: ' + (currentMatch ? 'vs ' + window.playerB : 'none'));
       return;
     }
     if (msg.type === 'state') {
@@ -578,22 +579,9 @@ function onServerMessage(data) {
     localState.scoreB = newScoreB;
 
     // Update player names
-    if (state.players) {
-      let playerName = '';
-      let oppName = '';
-      if (state.players.length === 2) {
-        if (state.players[0].name === name) {
-          playerName = state.players[0].name;
-          oppName = state.players[1].name;
-        } else {
-          playerName = state.players[1].name;
-          oppName = state.players[0].name;
-        }
-      } else if (state.players.length === 1) {
-        playerName = state.players[0].name;
-      }
-      document.getElementById('scoreboard-player').textContent = playerName;
-      document.getElementById('scoreboard-opp').textContent = oppName;
+    if (typeof window.playerA !== 'undefined' && typeof window.playerB !== 'undefined') {
+      document.getElementById('scoreboard-player').textContent = window.playerA;
+      document.getElementById('scoreboard-opp').textContent = window.playerB;
     }
   }
   

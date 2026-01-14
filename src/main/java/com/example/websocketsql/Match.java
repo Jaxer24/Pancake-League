@@ -68,16 +68,17 @@ public class Match {
             String json = "{\"type\":\"matched\",\"match\":\"" + id + "\",\"name\":\"" + name + "\"}";
             if (session != null && session.isOpen()) session.sendMessage(new TextMessage(json));
         } catch (IOException ignored) {}
-        // if two players present, notify both with opponent name
-        if (sessions.size() == 2) {
-            String[] names = sessions.keySet().toArray(new String[0]);
-            String a = names[0], b = names[1];
-            WebSocketSession sa = sessions.get(a); WebSocketSession sb = sessions.get(b);
+        // if two players present, notify both with opponent name, using playerA and playerB directly
+        if (sessions.size() == 2 && playerA != null && playerB != null) {
+            WebSocketSession sa = sessions.get(playerA);
+            WebSocketSession sb = sessions.get(playerB);
+            String matchInfo = String.format(
+                "{\"type\":\"matched\",\"match\":\"%s\",\"playerA\":\"%s\",\"playerB\":\"%s\"}",
+                id, playerA, playerB
+            );
             try {
-                String ja = "{\"type\":\"matched\",\"match\":\""+id+"\",\"name\":\""+a+"\",\"opponent\":\""+b+"\"}";
-                String jb = "{\"type\":\"matched\",\"match\":\""+id+"\",\"name\":\""+b+"\",\"opponent\":\""+a+"\"}";
-                if (sa != null && sa.isOpen()) sa.sendMessage(new TextMessage(ja));
-                if (sb != null && sb.isOpen()) sb.sendMessage(new TextMessage(jb));
+                if (sa != null && sa.isOpen()) sa.sendMessage(new TextMessage(matchInfo));
+                if (sb != null && sb.isOpen()) sb.sendMessage(new TextMessage(matchInfo));
             } catch (IOException ignored) {}
             // Start countdown if both players present and not already running
             if (roundFrozen) {
