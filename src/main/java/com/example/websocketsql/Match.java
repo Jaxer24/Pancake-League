@@ -616,7 +616,10 @@ public class Match {
                 this.vy = facingY * proj;
             }
             double steerFactor = 2.0 * (1.0 + speed / 300.0);
-            if (in.brake) steerFactor *= 0.5;
+            if (in.brake) {
+                // If brake is held, increase turn speed instead of halving
+                steerFactor *= 2; // Increase turn speed by 50% when braking
+            }
             if (in.steer != 0) {
                 angle += in.steer * steerFactor * dt;
             }
