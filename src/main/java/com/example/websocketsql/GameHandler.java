@@ -30,6 +30,7 @@ public class GameHandler extends TextWebSocketHandler {
     @SuppressWarnings("null")
     protected void handleTextMessage(@NonNull WebSocketSession session, @NonNull org.springframework.web.socket.TextMessage message) throws Exception {
         String payload = message.getPayload();
+        System.out.println("[DEBUG] WebSocket message received: " + payload);
         JsonNode node = mapper.readTree(payload);
         String type = node.get("type").asText();
         if ("join".equals(type)) {
@@ -98,9 +99,11 @@ public class GameHandler extends TextWebSocketHandler {
     }
 
     public void broadcastState(String json) {
-        // ...existing code...
+        // Only broadcast global state to players NOT in a match
         for (Map.Entry<String, WebSocketSession> e : sessionsByPlayer.entrySet()) {
             String player = e.getKey();
+            // Only send if player is not in a match
+            if (matchManager.getMatchFor(player) != null) continue;
             WebSocketSession s = e.getValue();
             if (s == null) continue;
             sendExecutor.submit(() -> {

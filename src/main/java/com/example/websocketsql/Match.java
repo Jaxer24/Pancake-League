@@ -11,6 +11,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+
 public class Match {
     public final String id = UUID.randomUUID().toString();
     private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
@@ -19,7 +20,7 @@ public class Match {
     private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
     @SuppressWarnings("unused")
     private final java.util.concurrent.ExecutorService sendExecutor = Executors.newSingleThreadExecutor(r -> { Thread t = new Thread(r, "match-sender-"+id); t.setDaemon(true); return t; });
-    private final GameRepository repo;
+    private GameRepository repo = new GameRepository();
     private int tickCounter = 0;
     private static final int BROADCAST_SKIP = 1; // send state every N ticks
     private Ball ball;
@@ -36,6 +37,7 @@ public class Match {
 
     public Match(GameRepository repo) {
         this.repo = repo;
+        System.out.println("[DEBUG] Match created with id: " + id);
         this.ball = new Ball();
         // Ensure ball starts in the center
         this.ball.x = 520;
@@ -67,7 +69,9 @@ public class Match {
         try {
             String json = "{\"type\":\"matched\",\"match\":\"" + id + "\",\"playerA\":\"" + playerA + "\",\"playerB\":\"" + playerB + "\"}";
             if (session != null && session.isOpen()) session.sendMessage(new TextMessage(json));
-        } catch (IOException ignored) {}
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
 
         if (sessions.size() == 2 && playerA != null && playerB != null) {
             WebSocketSession sa = sessions.get(playerA);
@@ -79,13 +83,17 @@ public class Match {
             try {
                 if (sa != null && sa.isOpen()) sa.sendMessage(new TextMessage(matchInfo));
                 if (sb != null && sb.isOpen()) sb.sendMessage(new TextMessage(matchInfo));
-            } catch (IOException ignored) {}
-            // Start countdown if both players present and not already running
-            if (roundFrozen) {
-                roundCountdownEndTime = System.currentTimeMillis() + 5000;
-                roundEndTime = roundCountdownEndTime + ROUND_DURATION_MS;
-                roundOver = false;
+            } catch (Exception ex) {
+                ex.printStackTrace();
             }
+            // Always start/restart countdown when both players are present
+            System.out.println("[DEBUG] Starting/restarting pregame countdown for match " + id);
+            roundCountdownEndTime = System.currentTimeMillis() + 5000;
+            roundEndTime = roundCountdownEndTime + ROUND_DURATION_MS;
+            roundFrozen = true;
+            roundOver = false;
+        } else {
+            System.out.println("[DEBUG] Not starting countdown: sessions.size()=" + sessions.size() + ", playerA=" + playerA + ", playerB=" + playerB + ", roundFrozen=" + roundFrozen);
         }
     }
 
@@ -113,6 +121,8 @@ public class Match {
 
     private void tick() {
         // --- Handle round timer ---
+        // Debug: print player names in this match before broadcasting state
+        System.out.println("[DEBUG] Match " + id + " players: " + players.keySet());
         long now = System.currentTimeMillis();
         long timerMs = Math.max(0, roundEndTime - now);
         boolean overtime = false;
@@ -145,60 +155,68 @@ public class Match {
         // --- Handle round start countdown freeze logic ---
         // (reuse 'now' variable)
         long msLeft = roundCountdownEndTime - now;
+        System.out.println("[DEBUG] TICK: match=" + id + ", roundFrozen=" + roundFrozen + ", msLeft=" + msLeft + ", roundCountdownEndTime=" + roundCountdownEndTime + ", now=" + now);
         if (roundFrozen) {
             if (msLeft <= 0) {
+                System.out.println("[DEBUG] msLeft <= 0 reached for match " + id + ", msLeft=" + msLeft + ", now=" + now + ", roundCountdownEndTime=" + roundCountdownEndTime);
                 roundFrozen = false;
                 msLeft = 0;
+                System.out.println("[DEBUG] roundFrozen set to FALSE for match " + id + " at " + System.currentTimeMillis());
                 // Start round timer when countdown ends
                 roundEndTime = System.currentTimeMillis() + ROUND_DURATION_MS;
                 roundOver = false;
-            }
-            // During preround countdown, rotate playerB to face left (angle = Math.PI) for the entire countdown
-            if (playerB != null && players.containsKey(playerB)) {
-                PlayerState pB = players.get(playerB);
-                pB.angle = Math.PI;
-            }
-            // Broadcast countdown state every tick
-            StringBuilder sb = new StringBuilder();
-            sb.append('{');
-            sb.append("\"type\":\"state\",");
-            sb.append("\"match\":\"").append(id).append("\",");
-            sb.append("\"tick\":").append(tickCounter).append(',');
-            sb.append("\"scoreA\":").append(scoreA).append(",\"scoreB\":").append(scoreB).append(',');
-            sb.append("\"ball\":{").append("\"x\":").append(ball.x).append(",\"y\":").append(ball.y).append(",\"z\":").append(ball.z).append("},");
-            sb.append("\"players\":[");
-            boolean first = true;
-            for (Map.Entry<String, PlayerState> e : players.entrySet()) {
-                String name = e.getKey();
-                PlayerState p = e.getValue();
-                if (!first) sb.append(','); first = false;
-                sb.append('{')
-                    .append("\"name\":\"").append(name).append("\",")
-                    .append("\"x\":").append(p.x).append(',')
-                    .append("\"y\":").append(p.y).append(',')
-                    .append("\"z\":").append(p.z).append(',')
-                    .append("\"angle\":").append(p.angle).append(',')
-                    .append("\"lastSeq\":").append(p.lastAppliedSeq).append(',')
-                    .append("\"boostFuel\":").append(p.boostFuel).append(',');
-                if (name.equals(playerA)) {
-                    sb.append("\"color\":\"blue\"");
-                } else if (name.equals(playerB)) {
-                    sb.append("\"color\":\"red\"");
-                } else {
-                    sb.append("\"color\":\"gray\"");
+                System.out.println("[DEBUG] Countdown ended, game starting for match " + id);
+            } else {
+                // During preround countdown, rotate playerB to face left (angle = Math.PI) for the entire countdown
+                if (playerB != null && players.containsKey(playerB)) {
+                    PlayerState pB = players.get(playerB);
+                    pB.angle = Math.PI;
                 }
+                // Broadcast countdown state every tick
+                System.out.println("[DEBUG] Pregame countdown running: msLeft=" + msLeft + ", match=" + id);
+                // Debug: print player names in this match before broadcasting state (every tick)
+                System.out.println("[DEBUG] Match " + id + " players: " + players.keySet());
+                StringBuilder sb = new StringBuilder();
+                sb.append('{');
+                sb.append("\"type\":\"state\",");
+                sb.append("\"match\":\"").append(id).append("\",");
+                sb.append("\"tick\":").append(tickCounter).append(',');
+                sb.append("\"scoreA\":").append(scoreA).append(",\"scoreB\":").append(scoreB).append(',');
+                sb.append("\"ball\":{").append("\"x\":").append(ball.x).append(",\"y\":").append(ball.y).append(",\"z\":").append(ball.z).append("},");
+                sb.append("\"players\":[");
+                boolean first = true;
+                for (Map.Entry<String, PlayerState> e : players.entrySet()) {
+                    String name = e.getKey();
+                    PlayerState p = e.getValue();
+                    if (!first) sb.append(','); first = false;
+                    sb.append('{')
+                        .append("\"name\":\"").append(name).append("\",")
+                        .append("\"x\":").append(p.x).append(',')
+                        .append("\"y\":").append(p.y).append(',')
+                        .append("\"z\":").append(p.z).append(',')
+                        .append("\"angle\":").append(p.angle).append(',')
+                        .append("\"lastSeq\":").append(p.lastAppliedSeq).append(',')
+                        .append("\"boostFuel\":").append(p.boostFuel).append(',');
+                    if (name.equals(playerA)) {
+                        sb.append("\"color\":\"blue\"");
+                    } else if (name.equals(playerB)) {
+                        sb.append("\"color\":\"red\"");
+                    } else {
+                        sb.append("\"color\":\"gray\"");
+                    }
+                    sb.append('}');
+                }
+                sb.append(']');
+                sb.append(",\"countdownMs\":").append(msLeft);
+                sb.append(",\"timerMs\":").append(ROUND_DURATION_MS);
                 sb.append('}');
+                broadcastState(sb.toString());
+                tickCounter++;
+                return;
             }
-            sb.append(']');
-            sb.append(",\"countdownMs\":").append(msLeft);
-            sb.append(",\"timerMs\":").append(ROUND_DURATION_MS);
-            sb.append('}');
-            broadcastState(sb.toString());
-            tickCounter++;
-            return;
         }
         // Player-player collision (simple elastic, like wall), only if on same z level
-        final double zThreshold = 3; // max vertical distance to allow collision (less strict z-level matching)
+        final double zThreshold = 3;{ // max vertical distance to allow collision (less strict z-level matching)
         for (Map.Entry<String, PlayerState> e1 : players.entrySet()) {
             PlayerState p1 = e1.getValue();
             double p1Scale = 1.0 + Math.min(1.0, p1.z * 0.12);
@@ -244,6 +262,12 @@ public class Match {
             long tickId = System.currentTimeMillis();
             tickCounter++;
             // advance ball physics
+            if (ball == null) {
+                System.out.println("[ERROR] ball is null in tick()");
+            }
+            if (repo == null) {
+                System.out.println("[ERROR] repo is null in tick()");
+            }
             ball.update(dt);
             // ball-wall collision (allow entry into goal zones, restrict only at outer canvas edges)
             // Canvas: 1040x600, field: x=120..919, y=0..599, goals: x=0..119 (left), x=920..1039 (right), ball radius=30
@@ -304,6 +328,7 @@ public class Match {
                     if (ball != null) { ball.x = 520; ball.y = 300; ball.vx = 0; ball.vy = 0; ball.z = 0; ball.vz = 0; }
                 }
                 // If in overtime and a point is scored, end the game and declare winner
+                // Use the timerMs variable already declared at the top of tick()
                 if (!roundOver && timerMs <= 0 && scoreA != scoreB) {
                     roundOver = true;
                     String winner = null;
@@ -367,6 +392,9 @@ public class Match {
                 PlayerInput in = inputs.getOrDefault(name, new PlayerInput(0,0,0,false,false,false));
                 p.applyInput(in, dt);
                 p.lastAppliedSeq = in.seq;
+                if (repo == null) {
+                    System.out.println("[ERROR] repo is null when calling enqueuePosition for player " + name);
+                }
                 repo.enqueuePosition(name, tickId, p.x, p.y, p.z, p.vx, p.vy, p.vz);
             }
 
@@ -490,13 +518,17 @@ public class Match {
         } catch (Exception ex) {
             ex.printStackTrace();
         }
+        }
     }
 
     private void broadcastState(String json) {
         for (Map.Entry<String, WebSocketSession> e : sessions.entrySet()) {
             String player = e.getKey();
             WebSocketSession s = e.getValue();
-            if (s == null) continue;
+            if (s == null) {
+                System.out.println("[WARN] Session is null for player " + player);
+                continue;
+            }
             sendExecutor.submit(() -> {
                 synchronized (s) {
                     try {
@@ -504,11 +536,13 @@ public class Match {
                         TextMessage msg = new TextMessage((CharSequence) json);
                         if (s.isOpen()) s.sendMessage(msg);
                     } catch (IllegalStateException | IOException ex) {
+                        System.out.println("[ERROR] Exception sending message to player " + player + ": " + ex);
+                        ex.printStackTrace();
                         // remove and close broken session
                         sessions.remove(player);
                         inputs.remove(player);
                         players.remove(player);
-                        try { s.close(); } catch (Exception ignored) {}
+                        try { s.close(); } catch (Exception ex2) { ex2.printStackTrace(); }
                     }
                 }
             });

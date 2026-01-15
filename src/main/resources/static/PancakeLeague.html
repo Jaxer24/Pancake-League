@@ -3,52 +3,32 @@
 <html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
   
   <title>Top‑Down Rocket Game (Prototype)</title>
-  <script src="./Top‑Down Rocket Game (Prototype)_files/phaser.min.js.download"></script>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
   <style>body{margin:0}canvas{display:block;margin:0 auto}</style>
 </head>
 <body>
-<div id="controls-legend" style="position:fixed; left:0; top:80px; width:120px; color:#222; font-family:Arial,sans-serif; font-size:1.08em; z-index:20; background:none; box-shadow:none; border:none; border-radius:0; padding:0; line-height:1.7; pointer-events:none;">
+<div id="controls-legend" style="display:none;position:fixed; left:0; top:80px; width:120px; color:#222; font-family:Arial,sans-serif; font-size:1.08em; z-index:20; background:none; box-shadow:none; border:none; border-radius:0; padding:0; line-height:1.7; pointer-events:none;">
   <div><b>Arrows</b>: Move</div>
   <div><b>Shift</b>: Boost</div>
   <div><b>Space</b>: Jump</div>
   <div><b>Z</b>: Brake</div>
 </div>
-<div id="scoreboard-player" style="position:absolute; left:18px; top:18px; min-width:100px; color:#fff; background:#0074D9; border-radius:12px; padding:10px 22px; font-size:1.25em; font-weight:900; letter-spacing:1px; z-index:12; box-shadow:0 2px 8px #0074D988; pointer-events:none; text-align:left;"></div>
-<div id="scoreboard-opp" style="position:absolute; right:18px; top:18px; min-width:100px; color:#fff; background:#FF4136; border-radius:12px; padding:10px 22px; font-size:1.25em; font-weight:900; letter-spacing:1px; z-index:12; box-shadow:0 2px 8px #FF413688; pointer-events:none; text-align:right;"></div>
-<div id="scoreboard-score" style="position:absolute; left:50%; top:18px; transform:translateX(-50%); min-width:90px; color:#ffff00; background:rgba(0,0,0,0.25); border-radius:12px; font-size:2.7em; font-weight:900; text-shadow:2px 2px 6px #000, 0 0 2px #fff; padding:10px 32px; border:2px solid #fff; letter-spacing:2px; z-index:12; pointer-events:none; text-align:center;"></div>
-<script>
+<div id="scoreboard-player" style="display:none;position:absolute; left:18px; top:18px; min-width:100px; color:#fff; background:#0074D9; border-radius:12px; padding:8px 16px; font-size:1.15em; font-weight:900; letter-spacing:1px; z-index:12; box-shadow:0 2px 8px #0074D988; pointer-events:none; text-align:left;"></div>
+<div id="scoreboard-player-score" style="display:none;position:absolute; left:18px; top:54px; min-width:100px; color:#ffff00; background:rgba(0,0,0,0.18); border-radius:8px; font-size:1.15em; font-weight:900; text-shadow:2px 2px 6px #000, 0 0 2px #fff; padding:4px 16px; border:1px solid #fff; letter-spacing:1px; z-index:12; pointer-events:none; text-align:left;"></div>
+<div id="scoreboard-opp" style="display:none;position:absolute; right:18px; top:18px; min-width:100px; color:#fff; background:#FF4136; border-radius:12px; padding:8px 16px; font-size:1.15em; font-weight:900; letter-spacing:1px; z-index:12; box-shadow:0 2px 8px #FF413688; pointer-events:none; text-align:right;"></div>
+<div id="scoreboard-opp-score" style="display:none;position:absolute; right:18px; top:54px; min-width:100px; color:#ffff00; background:rgba(0,0,0,0.18); border-radius:8px; font-size:1.15em; font-weight:900; text-shadow:2px 2px 6px #000, 0 0 2px #fff; padding:4px 16px; border:1px solid #fff; letter-spacing:1px; z-index:12; pointer-events:none; text-align:right;"></div>
+<div id="scoreboard-score" style="display:none;position:absolute; left:50%; top:18px; min-width:100px; color:#fff; background:#111; border-radius:12px; padding:8px 16px; font-size:1.5em; font-weight:900; letter-spacing:1px; z-index:12; box-shadow:0 2px 8px #0008; pointer-events:none; text-align:center; transform:translateX(-50%);"></div>
+<!-- Move script to end of body for proper DOM initialization -->
+ <script>
 const url = (location.protocol === 'https:') ? 'wss://' + location.host + '/game' : 'ws://' + location.host + '/game';
-let name = prompt('Enter a username (1v1)') || ('player'+Math.floor(Math.random()*1000));
-const ws = new WebSocket(url);
-ws.onopen = () => ws.send(JSON.stringify({type:'join', name}));
 
-// create a canvas with willReadFrequently for faster readbacks
-const canvas = document.createElement('canvas');
-canvas.width = 1040; canvas.height = 600; // widened for recessed goals
-canvas.style.display = 'block';
-canvas.style.margin = '0 auto';
-canvas.getContext('2d', { willReadFrequently: true });
-document.body.appendChild(canvas);
-
-
-
-// Field and goal dimensions (shared by create and update)
+// --- Field, goal, and patch dimensions (from index.html) ---
 const fieldX = 120, fieldY = 0, fieldW = 800, fieldH = 600;
 const goalW = 120;
 const goalH = 360; // Make goal as tall as the field to meet the green patches
 const goalY = 0;
 const leftGoal = {x: 0, y: goalY, w: goalW, h: goalH};
 const rightGoal = {x: 1040 - goalW, y: goalY, w: goalW, h: goalH};
-
-// Green patch rectangles (corners)
-// Helper: circle-rectangle overlap
-function overlapsRect(cx, cy, rad, rect) {
-  const closestX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
-  const closestY = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
-  const dx = cx - closestX;
-  const dy = cy - closestY;
-  return (dx * dx + dy * dy) <= (rad * rad);
-}
 const patchW = fieldX, patchH = fieldY + fieldH;
 const canvasW = 1040, canvasH = 600;
 const greenPatches = [
@@ -61,9 +41,104 @@ const greenPatches = [
   // Bottom-right
   {x: canvasW - patchW, y: canvasH - patchW, w: patchW, h: patchW}
 ];
+function overlapsRect(cx, cy, rad, rect) {
+  const closestX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
+  const closestY = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
+  const dx = cx - closestX;
+  const dy = cy - closestY;
+  return (dx * dx + dy * dy) <= (rad * rad);
+}
 
-const config = { type: Phaser.CANVAS, canvas: canvas, width: 1040, height: 600, physics: { default: 'arcade' }, scene: { preload, create, update } };
-const game = new Phaser.Game(config);
+// --- Account/Login UI ---
+let name = null;
+let token = null;
+const loginDiv = document.createElement('div');
+loginDiv.style = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.7);z-index:1000;display:flex;align-items:center;justify-content:center;';
+loginDiv.innerHTML = `
+  <div style="background:#222;padding:32px 40px;border-radius:16px;box-shadow:0 4px 32px #0008;min-width:320px;max-width:90vw;">
+    <h2 style='color:#fff;text-align:center;margin-bottom:18px;'>Login or Register</h2>
+    <input id='login-username' placeholder='Username' style='width:100%;margin-bottom:10px;padding:8px;font-size:1.1em;border-radius:6px;border:1px solid #888;'><br>
+    <input id='login-password' type='password' placeholder='Password' style='width:100%;margin-bottom:10px;padding:8px;font-size:1.1em;border-radius:6px;border:1px solid #888;'><br>
+    <div style="display:flex;gap:16px;margin-bottom:10px;">
+      <button id='login-btn' style='flex:1;padding:12px 0;font-size:1.1em;border-radius:6px;background:#0074D9;color:#fff;border:none;'>Login</button>
+      <button id='register-btn' style='flex:1;padding:12px 0;font-size:1.1em;border-radius:6px;background:#2ecc40;color:#fff;border:none;'>Register</button>
+    </div>
+    <div id='login-error' style='color:#ff4136;margin-top:10px;min-height:24px;text-align:center;'></div>
+  </div>
+`;
+document.body.appendChild(loginDiv);
+
+function doAuth(endpoint) {
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
+  if (!username || !password) {
+    document.getElementById('login-error').textContent = 'Enter username and password.';
+    return;
+  }
+  fetch('/api/account/' + endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, passwordHash: password })
+  })
+    .then(r => r.ok ? r.text() : r.text().then(t => Promise.reject(t)))
+    .then(msg => {
+      name = username;
+      document.body.removeChild(loginDiv);
+      startGame();
+    })
+    .catch(err => {
+      let errMsg = '';
+      if (typeof err === 'string') errMsg = err;
+      else if (err && typeof err.message === 'string') errMsg = err.message;
+      else errMsg = 'Error';
+      const loginErrorElem = document.getElementById('login-error');
+      if (loginErrorElem) {
+        if (endpoint === 'login' && errMsg.toLowerCase().includes('invalid credentials')) {
+          loginErrorElem.textContent = 'Incorrect username or password';
+        } else {
+          loginErrorElem.textContent = errMsg;
+        }
+      }
+    });
+}
+document.getElementById('login-btn').onclick = () => doAuth('login');
+document.getElementById('register-btn').onclick = () => doAuth('register');
+
+function startGame() {
+  // Show UI elements now that login is complete
+  document.getElementById('controls-legend').style.display = '';
+  document.getElementById('scoreboard-player').style.display = '';
+  document.getElementById('scoreboard-opp').style.display = '';
+  document.getElementById('scoreboard-score').style.display = '';
+
+  // Only create WebSocket after name is set (after login/register)
+  if (!name) {
+    console.error('[WebSocket] Cannot start game: name is not set');
+    return;
+  }
+  ws = new WebSocket(url);
+  ws.onopen = () => {
+    console.log('[WebSocket] open');
+    const joinMsg = {type:'join', name};
+    console.log('[WebSocket] sending join:', joinMsg);
+    ws.send(JSON.stringify(joinMsg));
+  };
+
+  // Create Phaser game instance if not already created
+  if (!window._phaserGame) {
+    window._phaserGame = new Phaser.Game({
+      type: Phaser.AUTO,
+      width: 1040,
+      height: 600,
+      backgroundColor: '#226622',
+      scene: { preload, create, update }
+    });
+  }
+
+}
+
+// Phaser game is now created in startGame() after login
+let ws; // WebSocket is now global
 let cursors, spaceKey, shiftKey, brakeKey;
 let sprites = {};
 let scoreHudText;
@@ -178,6 +253,7 @@ function create() {
   this.playersLayer = this.add.container();
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
+    console.log('[WebSocket] message', msg);
     if (msg.type === 'matched') {
       currentMatch = msg.match || null;
       const opp = msg.opponent || '';
@@ -195,7 +271,7 @@ function create() {
 
 function onServerMessage(data) {
   const state = (typeof data === 'string') ? JSON.parse(data) : data;
-  
+  console.log('[onServerMessage]', state);
   // create ball sprite if needed (3x larger: radius 30)
   if (!sprites.ball && state.ball) {
     const ballGraphic = this.add.graphics();
@@ -592,5 +668,7 @@ function update(time, delta) {
   });
 }
 
-</script><canvas width="1040" height="600" style="display: block; margin: 0px auto;"></canvas>
-</body></html>
+// ...existing code...
+</script>
+</body>
+</html>
