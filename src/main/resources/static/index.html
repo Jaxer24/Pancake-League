@@ -13,6 +13,7 @@
   <div><b>Space</b>: Jump</div>
   <div><b>Z</b>: Brake</div>
 </div>
+<div id="active-player-count" style="position:fixed; left:0; top:220px; width:120px; color:#0074D9; font-family:Arial,sans-serif; font-size:1.08em; z-index:21; background:none; box-shadow:none; border:none; border-radius:0; padding:0; line-height:1.7; pointer-events:none; text-align:left; font-weight:bold;">Active players online: 0</div>
 <div id="scoreboard-player" style="position:absolute; left:18px; top:18px; min-width:100px; color:#fff; background:#0074D9; border-radius:12px; padding:8px 16px; font-size:1.15em; font-weight:900; letter-spacing:1px; z-index:12; box-shadow:0 2px 8px #0074D988; pointer-events:none; text-align:left;"></div>
 <div id="scoreboard-player-score" style="position:absolute; left:18px; top:54px; min-width:100px; color:#ffff00; background:rgba(0,0,0,0.18); border-radius:8px; font-size:1.15em; font-weight:900; text-shadow:2px 2px 6px #000, 0 0 2px #fff; padding:4px 16px; border:1px solid #fff; letter-spacing:1px; z-index:12; pointer-events:none; text-align:left;"></div>
 <div id="scoreboard-opp" style="position:absolute; right:18px; top:18px; min-width:100px; color:#fff; background:#FF4136; border-radius:12px; padding:8px 16px; font-size:1.15em; font-weight:900; letter-spacing:1px; z-index:12; box-shadow:0 2px 8px #FF413688; pointer-events:none; text-align:right;"></div>
@@ -373,6 +374,13 @@ function create() {
     } else if (msg.type === 'gameover') {
       // Always handle gameover messages
       onServerMessage.call(this, msg);
+    } else if (msg.type === 'activePlayerCount') {
+      // Debug: log every active player count message
+      console.log('[DEBUG] Received activePlayerCount:', msg.count);
+      // Update the sidebar info
+      const el = document.getElementById('active-player-count');
+      if (el) el.textContent = 'Active players online: ' + msg.count;
+      return;
     }
   };
 }

@@ -35,6 +35,8 @@ public class GameHandler extends TextWebSocketHandler {
             System.out.println("[CLEANUP] WebSocket closed for player: " + playerToRemove);
             removePlayer(playerToRemove);
             matchManager.removePlayerFromMatch(playerToRemove);
+            // Broadcast updated active player count to all lobby users
+            broadcastActivePlayerCount();
         }
     }
 
@@ -58,6 +60,8 @@ public class GameHandler extends TextWebSocketHandler {
             matchManager.assignSessionToMatch(name, session);
             gameLoop.addPlayer(name); // keep global loop as fallback
             matchManager.updatePlayerActivity(name);
+            // Broadcast updated active player count to all lobby users
+            broadcastActivePlayerCount();
         } else if ("input".equals(type)) {
             String name = node.get("name").asText();
             int seq = node.has("seq") ? node.get("seq").asInt() : 0;
@@ -138,6 +142,30 @@ public class GameHandler extends TextWebSocketHandler {
                         if (s.isOpen()) s.sendMessage(msg);
                     } catch (IllegalStateException | IOException ex) {
                         // Remove/close broken session to avoid blocking future broadcasts
+                        sessionsByPlayer.remove(player);
+                        latestInput.remove(player);
+                        try { s.close(); } catch (Exception ignored) {}
+                    }
+                }
+            });
+        }
+    }
+
+    // Broadcast the current active player count to all connected users (lobby and in-game)
+    public void broadcastActivePlayerCount() {
+        int activePlayers = sessionsByPlayer.size();
+        String json = String.format("{\"type\":\"activePlayerCount\",\"count\":%d}", activePlayers);
+        System.out.println("[DEBUG] broadcastActivePlayerCount: " + activePlayers + " active player(s)");
+        for (Map.Entry<String, WebSocketSession> e : sessionsByPlayer.entrySet()) {
+            String player = e.getKey();
+            WebSocketSession s = e.getValue();
+            if (s == null) continue;
+            sendExecutor.submit(() -> {
+                synchronized (s) {
+                    try {
+                        TextMessage msg = new TextMessage(json);
+                        if (s.isOpen()) s.sendMessage(msg);
+                    } catch (IllegalStateException | IOException ex) {
                         sessionsByPlayer.remove(player);
                         latestInput.remove(player);
                         try { s.close(); } catch (Exception ignored) {}
