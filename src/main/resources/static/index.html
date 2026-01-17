@@ -1,34 +1,56 @@
-<!DOCTYPE html>
-<!-- saved from url=(0022)http://localhost:8080/ -->
-<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-  
-  <title>Pancake League</title>
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Top‑Down Rocket Game (Prototype)</title>
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
   <style>body{margin:0}canvas{display:block;margin:0 auto}</style>
 </head>
 <body>
-<div id="controls-legend" style="display:none;position:fixed; left:0; top:80px; width:120px; color:#222; font-family:Arial,sans-serif; font-size:1.08em; z-index:20; background:none; box-shadow:none; border:none; border-radius:0; padding:0; line-height:1.7; pointer-events:none;">
+<div id="controls-legend" style="position:fixed; left:0; top:80px; width:120px; color:#222; font-family:Arial,sans-serif; font-size:1.08em; z-index:20; background:none; box-shadow:none; border:none; border-radius:0; padding:0; line-height:1.7; pointer-events:none;">
   <div><b>Arrows</b>: Move</div>
   <div><b>Shift</b>: Boost</div>
   <div><b>Space</b>: Jump</div>
   <div><b>Z</b>: Brake</div>
 </div>
-<div id="scoreboard-player" style="display:none;position:absolute; left:18px; top:18px; min-width:100px; color:#fff; background:#0074D9; border-radius:12px; padding:8px 16px; font-size:1.15em; font-weight:900; letter-spacing:1px; z-index:12; box-shadow:0 2px 8px #0074D988; pointer-events:none; text-align:left;"></div>
-<div id="scoreboard-player-score" style="display:none;position:absolute; left:18px; top:54px; min-width:100px; color:#ffff00; background:rgba(0,0,0,0.18); border-radius:8px; font-size:1.15em; font-weight:900; text-shadow:2px 2px 6px #000, 0 0 2px #fff; padding:4px 16px; border:1px solid #fff; letter-spacing:1px; z-index:12; pointer-events:none; text-align:left;"></div>
-<div id="scoreboard-opp" style="display:none;position:absolute; right:18px; top:18px; min-width:100px; color:#fff; background:#FF4136; border-radius:12px; padding:8px 16px; font-size:1.15em; font-weight:900; letter-spacing:1px; z-index:12; box-shadow:0 2px 8px #FF413688; pointer-events:none; text-align:right;"></div>
-<div id="scoreboard-opp-score" style="display:none;position:absolute; right:18px; top:54px; min-width:100px; color:#ffff00; background:rgba(0,0,0,0.18); border-radius:8px; font-size:1.15em; font-weight:900; text-shadow:2px 2px 6px #000, 0 0 2px #fff; padding:4px 16px; border:1px solid #fff; letter-spacing:1px; z-index:12; pointer-events:none; text-align:right;"></div>
-<div id="scoreboard-score" style="display:none;position:absolute; left:50%; top:18px; min-width:100px; color:#fff; background:#111; border-radius:12px; padding:8px 16px; font-size:1.5em; font-weight:900; letter-spacing:1px; z-index:12; box-shadow:0 2px 8px #0008; pointer-events:none; text-align:center; transform:translateX(-50%);"></div>
-<!-- Move script to end of body for proper DOM initialization -->
- <script>
+<div id="active-player-count" style="position:fixed; left:0; top:220px; width:120px; color:#0074D9; font-family:Arial,sans-serif; font-size:1.08em; z-index:21; background:none; box-shadow:none; border:none; border-radius:0; padding:0; line-height:1.7; pointer-events:none; text-align:left; font-weight:bold;">Active players online: 0</div>
+<div id="scoreboard-player" style="position:absolute; left:18px; top:18px; min-width:100px; color:#fff; background:#0074D9; border-radius:12px; padding:8px 16px; font-size:1.15em; font-weight:900; letter-spacing:1px; z-index:12; box-shadow:0 2px 8px #0074D988; pointer-events:none; text-align:left;"></div>
+<div id="scoreboard-player-score" style="position:absolute; left:18px; top:54px; min-width:100px; color:#ffff00; background:rgba(0,0,0,0.18); border-radius:8px; font-size:1.15em; font-weight:900; text-shadow:2px 2px 6px #000, 0 0 2px #fff; padding:4px 16px; border:1px solid #fff; letter-spacing:1px; z-index:12; pointer-events:none; text-align:left;"></div>
+<div id="scoreboard-opp" style="position:absolute; right:18px; top:18px; min-width:100px; color:#fff; background:#FF4136; border-radius:12px; padding:8px 16px; font-size:1.15em; font-weight:900; letter-spacing:1px; z-index:12; box-shadow:0 2px 8px #FF413688; pointer-events:none; text-align:right;"></div>
+<div id="scoreboard-opp-score" style="position:absolute; right:18px; top:54px; min-width:100px; color:#ffff00; background:rgba(0,0,0,0.18); border-radius:8px; font-size:1.15em; font-weight:900; text-shadow:2px 2px 6px #000, 0 0 2px #fff; padding:4px 16px; border:1px solid #fff; letter-spacing:1px; z-index:12; pointer-events:none; text-align:right;"></div>
+<script>
 const url = (location.protocol === 'https:') ? 'wss://' + location.host + '/ws' : 'ws://' + location.host + '/ws';
+let name = prompt('Enter a username (1v1)') || ('player'+Math.floor(Math.random()*1000));
+const ws = new WebSocket(url);
+ws.onopen = () => ws.send(JSON.stringify({type:'join', name}));
 
-// --- Field, goal, and patch dimensions (from index.html) ---
+// create a canvas with willReadFrequently for faster readbacks
+const canvas = document.createElement('canvas');
+canvas.width = 1040; canvas.height = 600; // widened for recessed goals
+canvas.style.display = 'block';
+canvas.style.margin = '0 auto';
+canvas.getContext('2d', { willReadFrequently: true });
+document.body.appendChild(canvas);
+
+
+
+// Field and goal dimensions (shared by create and update)
 const fieldX = 120, fieldY = 0, fieldW = 800, fieldH = 600;
 const goalW = 120;
 const goalH = 360; // Make goal as tall as the field to meet the green patches
 const goalY = 0;
 const leftGoal = {x: 0, y: goalY, w: goalW, h: goalH};
 const rightGoal = {x: 1040 - goalW, y: goalY, w: goalW, h: goalH};
+
+// Green patch rectangles (corners)
+// Helper: circle-rectangle overlap
+function overlapsRect(cx, cy, rad, rect) {
+  const closestX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
+  const closestY = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
+  const dx = cx - closestX;
+  const dy = cy - closestY;
+  return (dx * dx + dy * dy) <= (rad * rad);
+}
 const patchW = fieldX, patchH = fieldY + fieldH;
 const canvasW = 1040, canvasH = 600;
 const greenPatches = [
@@ -41,104 +63,172 @@ const greenPatches = [
   // Bottom-right
   {x: canvasW - patchW, y: canvasH - patchW, w: patchW, h: patchW}
 ];
-function overlapsRect(cx, cy, rad, rect) {
-  const closestX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
-  const closestY = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
-  const dx = cx - closestX;
-  const dy = cy - closestY;
-  return (dx * dx + dy * dy) <= (rad * rad);
-}
 
-// --- Account/Login UI ---
-let name = null;
-let token = null;
-const loginDiv = document.createElement('div');
-loginDiv.style = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.7);z-index:1000;display:flex;align-items:center;justify-content:center;';
-loginDiv.innerHTML = `
-  <div style="background:#222;padding:32px 40px;border-radius:16px;box-shadow:0 4px 32px #0008;min-width:320px;max-width:90vw;">
-    <h2 style='color:#fff;text-align:center;margin-bottom:18px;'>Login or Register</h2>
-    <input id='login-username' placeholder='Username' style='width:100%;margin-bottom:10px;padding:8px;font-size:1.1em;border-radius:6px;border:1px solid #888;'><br>
-    <input id='login-password' type='password' placeholder='Password' style='width:100%;margin-bottom:10px;padding:8px;font-size:1.1em;border-radius:6px;border:1px solid #888;'><br>
-    <div style="display:flex;gap:16px;margin-bottom:10px;">
-      <button id='login-btn' style='flex:1;padding:12px 0;font-size:1.1em;border-radius:6px;background:#0074D9;color:#fff;border:none;'>Login</button>
-      <button id='register-btn' style='flex:1;padding:12px 0;font-size:1.1em;border-radius:6px;background:#2ecc40;color:#fff;border:none;'>Register</button>
-    </div>
-    <div id='login-error' style='color:#ff4136;margin-top:10px;min-height:24px;text-align:center;'></div>
-  </div>
-`;
-document.body.appendChild(loginDiv);
 
-function doAuth(endpoint) {
-  const username = document.getElementById('login-username').value.trim();
-  const password = document.getElementById('login-password').value;
-  if (!username || !password) {
-    document.getElementById('login-error').textContent = 'Enter username and password.';
+function update(time, delta) {
+    // --- SOLID GREEN PATCH COLLISION (REWRITE) ---
+    // Allow free movement between field and goals. Only the four green corner patches are solid walls.
+  if (ws.readyState !== WebSocket.OPEN) return;
+  const dt = (delta || 16) / 1000.0;
+  const throttle = (cursors.up.isDown?1:(cursors.down.isDown?-1:0));
+  const steer = (cursors.left.isDown?-1:(cursors.right.isDown?1:0));
+  const jump = Phaser.Input.Keyboard.JustDown(spaceKey);
+  const boost = shiftKey.isDown;
+  const brake = brakeKey.isDown;
+
+  // Block all input during countdown
+  if (countdownTextObj && countdownTextObj.visible) {
+    // Optionally, you can add a pulsing effect or color change here
     return;
   }
-  fetch('/api/account/' + endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, passwordHash: password })
-  })
-    .then(r => r.ok ? r.text() : r.text().then(t => Promise.reject(t)))
-    .then(msg => {
-      name = username;
-      document.body.removeChild(loginDiv);
-      startGame();
-    })
-    .catch(err => {
-      let errMsg = '';
-      if (typeof err === 'string') errMsg = err;
-      else if (err && typeof err.message === 'string') errMsg = err.message;
-      else errMsg = 'Error';
-      const loginErrorElem = document.getElementById('login-error');
-      if (loginErrorElem) {
-        if (endpoint === 'login' && errMsg.toLowerCase().includes('invalid credentials')) {
-          loginErrorElem.textContent = 'Incorrect username or password';
-        } else {
-          loginErrorElem.textContent = errMsg;
+  // Halo collision check: if car touches any halo, send boostReset to server
+  // Halo positions and radius must match those in create()
+  // ...existing code...
+  const margin = 32;
+  const haloRadius = 13.5;
+  const carCollectRadius = 28;
+  // Find the local player's car state (by name)
+  const playerState = localState[name];
+  let touchingHalo = false;
+  let collectedHaloIdx = -1;
+  if (playerState) {
+    for (let i = 0; i < window.haloData.length; i++) {
+      const h = window.haloData[i];
+      if (!h.active) continue;
+      const dx = playerState.x - h.x;
+      const dy = playerState.y - h.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      // Only allow collection if car is low enough (z <= 3)
+      if (dist <= carCollectRadius && (playerState.z === undefined || playerState.z <= 3)) {
+        touchingHalo = true;
+        collectedHaloIdx = i;
+        break;
+      }
+    }
+    if (touchingHalo && !inHalo) {
+      ws.send(JSON.stringify({ type: 'boostReset', name }));
+      inHalo = true;
+      // Remove the collected halo and respawn after 15s
+      if (collectedHaloIdx !== -1 ) {
+        const h = window.haloData[collectedHaloIdx];
+        h.active = false;
+        if (h.haloG) h.haloG.destroy();
+        if (h.coreG) h.coreG.destroy();
+        h.haloG = null;
+        h.coreG = null;
+        if (h.respawnTimer) clearTimeout(h.respawnTimer);
+        h.respawnTimer = setTimeout(() => {
+          h.active = true;
+          window.redrawHalos();
+        }, 15000);
+      }
+      window.redrawHalos();
+    } else if (!touchingHalo) {
+      inHalo = false;
+    }
+  }
+  // --- BOOST LOCKOUT LOGIC ---
+  if (!localState[name]) localState[name] = {};
+  if (typeof localState[name].prevBoost === 'undefined') localState[name].prevBoost = false;
+  if (typeof localState[name].boostLock === 'undefined') localState[name].boostLock = false;
+  // If boost was just released, clear lock
+  if (!boost && localState[name].prevBoost) {
+    localState[name].boostLock = false;
+  }
+  localState[name].prevBoost = boost;
+  // send input to server, include boostLock
+  inputSeq += 1;
+  const out = { type: 'input', name, seq: inputSeq, throttle, steer, jump, boost, brake, boostLock: localState[name].boostLock };
+  ws.send(JSON.stringify(out));
+  // update all sprites: interpolate smoothly toward extrapolated server position
+  Object.keys(localState).forEach(key => {
+    const st = localState[key];
+    // Reset blocked flag at the start of the frame
+    st.blocked = false;
+    if (st.targetX !== undefined) {
+      // Snap to target if within 1 pixel to avoid slowdown near edge
+      if (Math.abs(st.x - st.targetX) < 1) st.x = st.targetX;
+      else st.x = st.x + (st.targetX - st.x) * 0.15;
+      if (Math.abs(st.y - st.targetY) < 1) st.y = st.targetY;
+      else st.y = st.y + (st.targetY - st.y) * 0.15;
+
+      // --- SOLID WALL COLLISION: Only for green patches (corners) ---
+      let r = (key === 'ball') ? 30 : 24;
+      for (const patch of greenPatches) {
+        if (overlapsRect(st.x, st.y, r, patch)) {
+          // Find the closest point on the patch edge
+          const closestX = Math.max(patch.x, Math.min(st.x, patch.x + patch.w));
+          const closestY = Math.max(patch.y, Math.min(st.y, patch.y + patch.h));
+          // Compute normal
+          let nx = st.x - closestX;
+          let ny = st.y - closestY;
+          const len = Math.hypot(nx, ny) || 1;
+          nx /= len; ny /= len;
+          // Clamp to edge
+          st.x = closestX + nx * (r + 0.1);
+          st.y = closestY + ny * (r + 0.1);
+          // Reflect and dampen normal velocity, keep tangent (like wall)
+          const vdotn = (st.vx || 0) * nx + (st.vy || 0) * ny;
+          const vnormx = nx * vdotn;
+          const vnormy = ny * vdotn;
+          const vtangx = (st.vx || 0) - vnormx;
+          const vtangy = (st.vy || 0) - vnormy;
+          // Reflect normal, dampen (0.5 like canvas border)
+          const bounce = 0.5;
+          const reflectedVnormx = -vnormx * bounce;
+          const reflectedVnormy = -vnormy * bounce;
+          st.vx = vtangx + reflectedVnormx;
+          st.vy = vtangy + reflectedVnormy;
         }
       }
-    });
+
+      // No ball collision debugging tool present; normal gameplay rendering only
+      if (key === 'ball') {
+        // interpolate z for smooth jump animation
+        if (st.targetZ !== undefined) {
+          if (Math.abs((st.z || 0) - (st.targetZ || 0)) < 0.5) st.z = st.targetZ;
+          else st.z = (st.z || 0) + ((st.targetZ || 0) - (st.z || 0)) * 0.15;
+        }
+        // ball rendering (3x larger with glow, scale with z)
+        if (sprites.ball) {
+          sprites.ball.graphic.clear();
+          // scale based on z (same as car)
+          const scale = 1 + Math.min(1.0, (st.z || 0) * 0.12);
+          // glow effect
+          sprites.ball.graphic.fillStyle(0xffff00, 0.2);
+          sprites.ball.graphic.fillCircle(st.x, st.y, 38 * scale);
+          // main ball
+          sprites.ball.graphic.fillStyle(0xffff00, 1);
+          sprites.ball.graphic.fillCircle(st.x, st.y, 30 * scale);
+          // Set ball depth based on z
+          sprites.ball.graphic.setDepth(st.z || 0);
+        }
+      } else {
+        // player rendering
+        if (st.targetAngle !== undefined) {
+          if (Math.abs((st.angle || 0) - (st.targetAngle || 0)) < 0.01) st.angle = st.targetAngle;
+          else st.angle = (st.angle || 0) + ((st.targetAngle || 0) - (st.angle || 0)) * 0.15;
+        }
+        if (st.targetZ !== undefined) {
+          if (Math.abs((st.z || 0) - (st.targetZ || 0)) < 0.5) st.z = st.targetZ;
+          else st.z = (st.z || 0) + ((st.targetZ || 0) - (st.z || 0)) * 0.15;
+        }
+        const obj = sprites[key];
+        if (obj) { 
+          obj.container.x = st.x; obj.container.y = st.y; obj.container.rotation = st.angle; 
+          obj.shadow.x = st.x; obj.shadow.y = st.y + 26; 
+          const scale = 1 + Math.min(1.0, st.z * 0.12);
+          obj.container.setScale(scale);
+          // Set player depth based on z
+          obj.container.setDepth(st.z || 0);
+        }
+      }
+    }
+  });
 }
-document.getElementById('login-btn').onclick = () => doAuth('login');
-document.getElementById('register-btn').onclick = () => doAuth('register');
 
-function startGame() {
-  // Show UI elements now that login is complete
-  document.getElementById('controls-legend').style.display = '';
-  document.getElementById('scoreboard-player').style.display = '';
-  document.getElementById('scoreboard-opp').style.display = '';
-  document.getElementById('scoreboard-score').style.display = '';
-
-  // Only create WebSocket after name is set (after login/register)
-  if (!name) {
-    console.error('[WebSocket] Cannot start game: name is not set');
-    return;
-  }
-  ws = new WebSocket(url);
-  ws.onopen = () => {
-    console.log('[WebSocket] open');
-    const joinMsg = {type:'join', name};
-    console.log('[WebSocket] sending join:', joinMsg);
-    ws.send(JSON.stringify(joinMsg));
-  };
-
-  // Create Phaser game instance if not already created
-  if (!window._phaserGame) {
-    window._phaserGame = new Phaser.Game({
-      type: Phaser.AUTO,
-      width: 1040,
-      height: 600,
-      backgroundColor: '#226622',
-      scene: { preload, create, update }
-    });
-  }
-
-}
-
-// Phaser game is now created in startGame() after login
-let ws; // WebSocket is now global
+const config = { type: Phaser.CANVAS, canvas: canvas, width: 1040, height: 600, physics: { default: 'arcade' }, scene: { preload, create, update } };
+const game = new Phaser.Game(config);
 let cursors, spaceKey, shiftKey, brakeKey;
 let sprites = {};
 let scoreHudText;
@@ -150,6 +240,22 @@ let pendingInputs = [];
 const SEND_INTERVAL = 33; // ms (~30Hz)
 let lastSend = 0;
 let goalFlashActive = false;
+
+// --- WAITING FOR PLAYER OVERLAY ---
+let waitingTextObj = null;
+
+// --- COUNTDOWN OVERLAY ---
+let countdownTextObj = null;
+let lastCountdownValue = null;
+
+// --- ROUND TIMER BAR ---
+let timerBarObj = null;
+let timerBarBgObj = null;
+let timerTextObj = null;
+let lastTimerValue = null;
+let gameOverTextObj = null;
+let leaveButtonObj = null;
+let gameIsOver = false;
 
 // Track if player is inside a halo to avoid spamming boostReset messages
 let inHalo = false;
@@ -253,11 +359,11 @@ function create() {
   this.playersLayer = this.add.container();
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
-    console.log('[WebSocket] message', msg);
     if (msg.type === 'matched') {
       currentMatch = msg.match || null;
-      const opp = msg.opponent || '';
-      if (matchHudText) matchHudText.setText('Match: ' + (currentMatch ? 'vs ' + opp : 'none'));
+      window.playerA = msg.playerA;
+      window.playerB = msg.playerB;
+      if (matchHudText) matchHudText.setText('Match: ' + (currentMatch ? 'vs ' + window.playerB : 'none'));
       return;
     }
     if (msg.type === 'state') {
@@ -265,19 +371,179 @@ function create() {
       if ((msg.match === null && currentMatch !== null) || (msg.match !== null && currentMatch !== null && msg.match !== currentMatch)) return;
       if (msg.match !== null && currentMatch === null) return; // match state for others while we're not matched
       onServerMessage.call(this, msg);
+    } else if (msg.type === 'gameover') {
+      // Always handle gameover messages
+      onServerMessage.call(this, msg);
+    } else if (msg.type === 'activePlayerCount') {
+      // Debug: log every active player count message
+      console.log('[DEBUG] Received activePlayerCount:', msg.count);
+      // Update the sidebar info
+      const el = document.getElementById('active-player-count');
+      if (el) el.textContent = 'Active players online: ' + msg.count;
+      return;
     }
   };
 }
 
 function onServerMessage(data) {
   const state = (typeof data === 'string') ? JSON.parse(data) : data;
-  console.log('[onServerMessage]', state);
+  
   // create ball sprite if needed (3x larger: radius 30)
   if (!sprites.ball && state.ball) {
     const ballGraphic = this.add.graphics();
     ballGraphic.fillStyle(0xffff00, 1);
     ballGraphic.fillCircle(state.ball.x, state.ball.y, 30);
     sprites.ball = { graphic: ballGraphic, x: state.ball.x, y: state.ball.y };
+  }
+
+  // --- WAITING FOR PLAYER OVERLAY ---
+  // Show if only one player is present (no opponent), but NOT during gameover
+  let isWaiting = false;
+  if (state.type !== 'gameover' && state.players && state.players.length === 1) {
+    isWaiting = true;
+  }
+  if (isWaiting) {
+    if (!waitingTextObj) {
+      waitingTextObj = this.add.text(520, 180, 'Waiting for player . . .', {
+        font: 'bold 48px Arial',
+        fill: '#fff',
+        stroke: '#000',
+        strokeThickness: 8,
+        align: 'center',
+        backgroundColor: 'rgba(0,0,0,0.35)'
+      }).setOrigin(0.5).setDepth(1001);
+    }
+    waitingTextObj.setVisible(true);
+  } else if (waitingTextObj) {
+    waitingTextObj.setVisible(false);
+  }
+
+  // --- COUNTDOWN VISUALIZATION ---
+  if (typeof state.countdownMs === 'number' && state.countdownMs > 0) {
+    const seconds = Math.ceil(state.countdownMs / 1000);
+    if (!countdownTextObj) {
+      countdownTextObj = this.add.text(520, 300, seconds.toString(), {
+        font: 'bold 96px Arial',
+        fill: '#ffff00',
+        stroke: '#000',
+        strokeThickness: 8,
+        align: 'center',
+        backgroundColor: 'rgba(0,0,0,0.25)'
+      }).setOrigin(0.5).setDepth(999);
+      lastCountdownValue = seconds;
+    } else if (lastCountdownValue !== seconds) {
+      countdownTextObj.setText(seconds.toString());
+      lastCountdownValue = seconds;
+    }
+    countdownTextObj.setVisible(true);
+  } else if (countdownTextObj) {
+    countdownTextObj.setVisible(false);
+  }
+
+  // --- TIMER BAR VISUALIZATION ---
+  if (typeof state.timerMs === 'number' && state.timerMs > 0 && (!state.countdownMs || state.countdownMs <= 0)) {
+    const totalMs = 180000; // 3 minutes (180,000 ms)
+    const ms = Math.max(0, Math.min(totalMs, state.timerMs));
+    const seconds = Math.ceil(ms / 1000);
+    const percent = ms / totalMs;
+    // Draw bar background
+    if (!timerBarBgObj) {
+      timerBarBgObj = this.add.graphics();
+      timerBarBgObj.setDepth(998);
+    }
+    timerBarBgObj.clear();
+    timerBarBgObj.fillStyle(0x222222, 0.7);
+    timerBarBgObj.fillRect(220, 8, 600, 24);
+    // Draw timer bar
+    if (!timerBarObj) {
+      timerBarObj = this.add.graphics();
+      timerBarObj.setDepth(999);
+    }
+    timerBarObj.clear();
+    timerBarObj.fillStyle(0x00ffcc, 1);
+    timerBarObj.fillRect(220, 8, 600 * percent, 24);
+    // Draw timer text
+    if (!timerTextObj) {
+      timerTextObj = this.add.text(520, 20, '', {
+        font: 'bold 24px Arial',
+        fill: '#fff',
+        stroke: '#000',
+        strokeThickness: 4,
+        align: 'center',
+      }).setOrigin(0.5).setDepth(1000);
+    }
+    timerTextObj.setText(seconds + 's');
+    timerBarBgObj.setVisible(true);
+    timerBarObj.setVisible(true);
+    timerTextObj.setVisible(true);
+  } else {
+    if (timerBarBgObj) timerBarBgObj.setVisible(false);
+    if (timerBarObj) timerBarObj.setVisible(false);
+    if (timerTextObj) timerTextObj.setVisible(false);
+  }
+
+  // --- GAME OVER VISUALIZATION ---
+  if (state.type === 'gameover') {
+    console.log('[DEBUG] Received gameover message:', state);
+    let winnerText = '';
+    if (state.winner === name) winnerText = 'YOU WIN!';
+    else if (state.winner) winnerText = state.winner + ' WINS!';
+    else winnerText = 'TIE!';
+    console.log('[DEBUG] Winner text to display:', winnerText);
+    if (!gameOverTextObj) {
+      console.log('[DEBUG] Creating gameOverTextObj');
+      gameOverTextObj = this.add.text(520, 120, winnerText, {
+        font: 'bold 64px Arial',
+        fill: '#ffff00',
+        stroke: '#000',
+        strokeThickness: 8,
+        align: 'center',
+        backgroundColor: 'rgba(0,0,0,0.25)'
+      }).setOrigin(0.5).setDepth(2000);
+    } else {
+      console.log('[DEBUG] Updating gameOverTextObj text');
+      gameOverTextObj.setText(winnerText);
+    }
+    gameOverTextObj.setVisible(true);
+    // Create or show the Leave Match button
+    if (!leaveButtonObj) {
+      leaveButtonObj = this.add.text(520, 220, 'Leave Match', {
+        font: 'bold 40px Arial',
+        fill: '#fff',
+        backgroundColor: '#0074D9',
+        padding: { left: 32, right: 32, top: 12, bottom: 12 },
+        borderRadius: 12,
+        stroke: '#000',
+        strokeThickness: 6,
+        align: 'center',
+        fixedWidth: 320
+      }).setOrigin(0.5).setDepth(2001).setInteractive({ useHandCursor: true });
+      leaveButtonObj.on('pointerdown', () => {
+        window.location.reload();
+      });
+    } else {
+      leaveButtonObj.setVisible(true);
+    }
+    gameIsOver = true;
+    console.log('[DEBUG] gameOverTextObj should now be visible');
+  } else if (gameOverTextObj) {
+    // Only hide the winner card and button if a new round is starting (countdownMs or timerMs is present)
+    if ((typeof state.countdownMs === 'number' && state.countdownMs > 0) || (typeof state.timerMs === 'number' && state.timerMs > 0)) {
+      gameOverTextObj.setVisible(false);
+      if (leaveButtonObj) leaveButtonObj.setVisible(false);
+      if (this.waitingTextObj) this.waitingTextObj.setVisible(false);
+      gameIsOver = false;
+      console.log('[DEBUG] Hiding gameOverTextObj (new round)');
+    } else if (gameIsOver) {
+      // If game is over, keep the winner card and button visible
+      gameOverTextObj.setVisible(true);
+      if (leaveButtonObj) leaveButtonObj.setVisible(true);
+    } else {
+      gameOverTextObj.setVisible(false);
+      if (leaveButtonObj) leaveButtonObj.setVisible(false);
+      if (this.waitingTextObj) this.waitingTextObj.setVisible(false);
+      console.log('[DEBUG] Hiding gameOverTextObj');
+    }
   }
 
   // update ball position and z
@@ -308,7 +574,7 @@ function onServerMessage(data) {
 
     // check if a goal was scored (still show GOAL! effect in-canvas)
     if (newScoreA > prevScoreA || newScoreB > prevScoreB) {
-      const goalText = this.add.text(400, 300, 'GOAL!', {font: 'bold 80px Arial', fill: '#ffff00', stroke: '#000000', strokeThickness: 4}).setOrigin(0.5).setAlpha(1);
+      const goalText = this.add.text(520, 300, 'GOAL!', {font: 'bold 80px Arial', fill: '#ffff00', stroke: '#000000', strokeThickness: 4}).setOrigin(0.5).setAlpha(1);
       this.tweens.add({targets: goalText, alpha: 0, duration: 1500, ease: 'Cubic.easeOut', onComplete: () => goalText.destroy()});
       for (let i = 0; i < 8; i++) {
         const particle = this.add.circle(400 + Math.random()*100 - 50, 300, 4, 0xffff00);
@@ -317,145 +583,150 @@ function onServerMessage(data) {
     }
 
     // Update HTML scoreboard
-    document.getElementById('scoreboard-score').textContent = newScoreA + ' : ' + newScoreB;
+    document.getElementById('scoreboard-player-score').textContent = newScoreA;
+    document.getElementById('scoreboard-opp-score').textContent = newScoreB;
     localState.scoreA = newScoreA;
     localState.scoreB = newScoreB;
 
     // Update player names
-    if (state.players) {
-      let playerName = '';
-      let oppName = '';
-      if (state.players.length === 2) {
-        if (state.players[0].name === name) {
-          playerName = state.players[0].name;
-          oppName = state.players[1].name;
-        } else {
-          playerName = state.players[1].name;
-          oppName = state.players[0].name;
-        }
-      } else if (state.players.length === 1) {
-        playerName = state.players[0].name;
-      }
-      document.getElementById('scoreboard-player').textContent = playerName;
-      document.getElementById('scoreboard-opp').textContent = oppName;
+    if (typeof window.playerA !== 'undefined' && typeof window.playerB !== 'undefined') {
+      document.getElementById('scoreboard-player').textContent = window.playerA;
+      document.getElementById('scoreboard-opp').textContent = window.playerB;
     }
   }
   
-    // Assign colors so local player is always blue, opponent is always red
-    const playerColors = [0x0074D9, 0xFF4136, 0x2ECC40, 0xFFDC00, 0xB10DC9, 0xFF851B]; // blue, red, green, yellow, purple, orange
-    state.players.forEach(p => {
-      if (!sprites[p.name]) {
+    // Assign colors based on server-supplied color property
+    if (Array.isArray(state.players)) {
+      state.players.forEach(p => {
+        // Always determine color from server property
         let color = 0x888888;
-        if (p.name === name) color = playerColors[0]; // local player always blue
-        else color = playerColors[1]; // opponent always red (for 1v1)
-      // shadow (separate object so it does not rotate with the car)
-      const shadow = this.add.graphics();
-      shadow.fillStyle(0x000000, 0.35);
-      shadow.fillEllipse(0, -10, 40, 14);
-      // car shape with detailed graphics
-      const g = this.add.graphics();
-      // front windshield
-      g.fillStyle(0xffffff, 0.6);
-      g.fillRect(8, -8, 10, 4);
-      // wheels (4 wheels: attached to long sides, closer to center)
-      g.fillStyle(0x333333, 1);
-      // left side wheels (top and bottom)
-      g.fillRect(-16, -15, 6, 6); // left-top (moved 2px further out)
-      g.fillRect(-16, 9, 6, 6);  // left-bottom (moved 2px further out)
-      // right side wheels (top and bottom)
-      g.fillRect(10, -15, 6, 6);  // right-top (moved 2px further out)
-      g.fillRect(10, 9, 6, 6);   // right-bottom (moved 2px further out)
-      // main car body as a rectangle (drawn after wheels)
-      g.fillStyle(color, 1);
-      g.fillRect(-18, -12, 38, 24);
-      // headlights (flush with inside edge of rectangle, more yellow)
-      g.fillStyle(0xffee00, 1);
-      g.fillRect(16, -9, 4, 4); // front-top right (flush with edge)
-      g.fillRect(16, 5, 4, 4);  // front-bottom right (flush with edge)
-      const s = this.add.container(p.x,p.y, [g]); s.setSize(48,48);
-      // Boost bar background
-      const boostBarBg = this.add.graphics();
-      boostBarBg.fillStyle(0x222222, 0.7);
-      boostBarBg.fillRect(-24, -28, 48, 6);
-      // Boost bar foreground (will be updated below)
-      const boostBarFg = this.add.graphics();
-      s.add(boostBarBg);
-      s.add(boostBarFg);
-      //const nameText = this.add.text(0,30,p.name,{font:'12px Arial',fill:'#fff'}).setOrigin(0.5,0);
-      //s.add(nameText);
-      // ensure car container is rendered above the shadow
-      shadow.setDepth(0);
-      s.setDepth(1);
-      sprites[p.name] = {container: s, graphics: g, shadow: shadow, boostBarFg: boostBarFg};
-      // initialize local state for prediction
-      localState[p.name] = { x: p.x, y: p.y, vx: 0, vy: 0, angle: p.angle, z: p.z, vz: 0, serverX: p.x, serverY: p.y, serverAngle: p.angle, correctionFrames: 0, boostFuel: (typeof p.boostFuel === 'number') ? p.boostFuel : 100 };
-    }
-    const obj = sprites[p.name];
-          // Update boostFuel from server state if present
-          if (typeof p.boostFuel === 'number') localState[p.name].boostFuel = p.boostFuel;
-        // Update boost bar
-          if (obj.boostBarFg) {
-            obj.boostBarFg.clear();
-            let fuel = (typeof localState[p.name].boostFuel === 'number') ? localState[p.name].boostFuel : 100;
-            fuel = Math.max(0, Math.min(100, fuel));
-            let barWidth = 46 * (fuel / 100);
-            obj.boostBarFg.fillStyle(0xff6600, 1);
-            obj.boostBarFg.fillRect(-23, -27, barWidth, 4);
-            // Optionally, draw a border for clarity
-            obj.boostBarFg.lineStyle(1, 0xffffff, 0.7);
-            obj.boostBarFg.strokeRect(-23, -27, 46, 4);
+        if (p.color === 'blue') color = 0x0074D9;
+        else if (p.color === 'red') color = 0xFF4136;
+        else color = 0x888888;
+        if (!sprites[p.name]) {
+          // shadow (separate object so it does not rotate with the car)
+          const shadow = this.add.graphics();
+          shadow.fillStyle(0x000000, 0.35);
+          shadow.fillEllipse(0, -10, 40, 14);
+          // car shape with detailed graphics
+          const g = this.add.graphics();
+          // front windshield
+          g.fillStyle(0xffffff, 0.6);
+          g.fillRect(8, -8, 10, 4);
+          // wheels (4 wheels: attached to long sides, closer to center)
+          g.fillStyle(0x333333, 1);
+          // left side wheels (top and bottom)
+          g.fillRect(-16, -15, 6, 6); // left-top (moved 2px further out)
+          g.fillRect(-16, 9, 6, 6);  // left-bottom (moved 2px further out)
+          // right side wheels (top and bottom)
+          g.fillRect(10, -15, 6, 6);  // right-top (moved 2px further out)
+          g.fillRect(10, 9, 6, 6);   // right-bottom (moved 2px further out)
+          // main car body as a rectangle (drawn after wheels)
+          g.fillStyle(color, 1);
+          g.fillRect(-18, -12, 38, 24);
+          // headlights (flush with inside edge of rectangle, more yellow)
+          g.fillStyle(0xffee00, 1);
+          g.fillRect(16, -9, 4, 4); // front-top right (flush with edge)
+          g.fillRect(16, 5, 4, 4);  // front-bottom right (flush with edge)
+          const s = this.add.container(p.x, p.y, [g]); s.setSize(48, 48);
+          // Boost bar background
+          const boostBarBg = this.add.graphics();
+          boostBarBg.fillStyle(0x222222, 0.7);
+          boostBarBg.fillRect(-24, -28, 48, 6);
+          // Boost bar foreground (will be updated below)
+          const boostBarFg = this.add.graphics();
+          s.add(boostBarBg);
+          s.add(boostBarFg);
+          // ensure car container is rendered above the shadow
+          shadow.setDepth(0);
+          s.setDepth(1);
+          sprites[p.name] = {container: s, graphics: g, shadow: shadow, boostBarFg: boostBarFg};
+          // initialize local state for prediction
+          localState[p.name] = { x: p.x, y: p.y, vx: 0, vy: 0, angle: p.angle, z: p.z, vz: 0, serverX: p.x, serverY: p.y, serverAngle: p.angle, correctionFrames: 0, boostFuel: (typeof p.boostFuel === 'number') ? p.boostFuel : 100 };
         }
-    const s = obj.container;
-    // all players: use server position with extrapolation based on velocity
-    if (!localState[p.name]) localState[p.name] = { x: p.x, y: p.y, angle: p.angle, z: p.z, vx: 0, vy: 0, lastX: p.x, lastY: p.y };
-    
-    // estimate velocity from last server state (position delta)
-    const dt_since_update = 0.033; // assume ~33ms between ticks
-    if (localState[p.name].lastX !== undefined) {
-      let vx = (p.x - localState[p.name].lastX) / dt_since_update;
-let vy = (p.y - localState[p.name].lastY) / dt_since_update;
-
-// Clamp absurd spikes (net jitter / correction / wall snap)
-const maxNetSpeed = 900; // tune: 600–1200 usually
-const mag = Math.hypot(vx, vy);
-if (mag > maxNetSpeed) {
-  vx = vx * maxNetSpeed / mag;
-  vy = vy * maxNetSpeed / mag;
-}
-
-localState[p.name].vx = vx;
-localState[p.name].vy = vy;
-
-// If predicted target would be inside a green patch, don't extrapolate this frame
-const rr = 24;
-for (const patch of greenPatches) {
-  if (overlapsRect(localState[p.name].targetX, localState[p.name].targetY, rr, patch)) {
-    localState[p.name].targetX = p.x;
-    localState[p.name].targetY = p.y;
-    break;
-  }
-}
+        const obj = sprites[p.name];
+        // Always update car body color to match server color
+        if (obj && obj.graphics) {
+          obj.graphics.clear();
+          // front windshield
+          obj.graphics.fillStyle(0xffffff, 0.6);
+          obj.graphics.fillRect(8, -8, 10, 4);
+          // wheels (4 wheels: attached to long sides, closer to center)
+          obj.graphics.fillStyle(0x333333, 1);
+          // left side wheels (top and bottom)
+          obj.graphics.fillRect(-16, -15, 6, 6); // left-top (moved 2px further out)
+          obj.graphics.fillRect(-16, 9, 6, 6);  // left-bottom (moved 2px further out)
+          // right side wheels (top and bottom)
+          obj.graphics.fillRect(10, -15, 6, 6);  // right-top (moved 2px further out)
+          obj.graphics.fillRect(10, 9, 6, 6);   // right-bottom (moved 2px further out)
+          // main car body as a rectangle (drawn after wheels)
+          obj.graphics.fillStyle(color, 1);
+          obj.graphics.fillRect(-18, -12, 38, 24);
+          // headlights (flush with inside edge of rectangle, more yellow)
+          obj.graphics.fillStyle(0xffee00, 1);
+          obj.graphics.fillRect(16, -9, 4, 4); // front-top right (flush with edge)
+          obj.graphics.fillRect(16, 5, 4, 4);  // front-bottom right (flush with edge)
+        }
+        // Update boostFuel from server state if present
+        if (typeof p.boostFuel === 'number') localState[p.name].boostFuel = p.boostFuel;
+        // Update boost bar
+        if (obj && obj.boostBarFg) {
+          obj.boostBarFg.clear();
+          let fuel = (typeof localState[p.name].boostFuel === 'number') ? localState[p.name].boostFuel : 100;
+          fuel = Math.max(0, Math.min(100, fuel));
+          let barWidth = 46 * (fuel / 100);
+          obj.boostBarFg.fillStyle(0xff6600, 1);
+          obj.boostBarFg.fillRect(-23, -27, barWidth, 4);
+          // Optionally, draw a border for clarity
+          obj.boostBarFg.lineStyle(1, 0xffffff, 0.7);
+          obj.boostBarFg.strokeRect(-23, -27, 46, 4);
+        }
+        const s = obj.container;
+        // all players: use server position with extrapolation based on velocity
+        if (!localState[p.name]) localState[p.name] = { x: p.x, y: p.y, angle: p.angle, z: p.z, vx: 0, vy: 0, lastX: p.x, lastY: p.y };
+        // estimate velocity from last server state (position delta)
+        const dt_since_update = 0.033; // assume ~33ms between ticks
+        if (localState[p.name].lastX !== undefined) {
+          let vx = (p.x - localState[p.name].lastX) / dt_since_update;
+          let vy = (p.y - localState[p.name].lastY) / dt_since_update;
+          // Clamp absurd spikes (net jitter / correction / wall snap)
+          const maxNetSpeed = 900; // tune: 600–1200 usually
+          const mag = Math.hypot(vx, vy);
+          if (mag > maxNetSpeed) {
+            vx = vx * maxNetSpeed / mag;
+            vy = vy * maxNetSpeed / mag;
+          }
+          localState[p.name].vx = vx;
+          localState[p.name].vy = vy;
+          // If predicted target would be inside a green patch, don't extrapolate this frame
+          const rr = 24;
+          for (const patch of greenPatches) {
+            if (overlapsRect(localState[p.name].targetX, localState[p.name].targetY, rr, patch)) {
+              localState[p.name].targetX = p.x;
+              localState[p.name].targetY = p.y;
+              break;
+            }
+          }
+        }
+        localState[p.name].lastX = p.x;
+        localState[p.name].lastY = p.y;
+        // set target to extrapolated position (where they likely are now)
+        localState[p.name].targetX = p.x + localState[p.name].vx * 0.033;
+        localState[p.name].targetY = p.y + localState[p.name].vy * 0.033;
+        localState[p.name].targetAngle = p.angle;
+        localState[p.name].targetZ = p.z;
+        // exaggerate scale based on vertical height to make jumps look floaty and last longer
+        const scale = 1 + Math.min(1.0, p.z * 0.12);
+        s.setScale(scale);
+        // shadow: position under car (does not rotate), shrink and fade when in the air
+        const sh = obj.shadow;
+        sh.x = p.x;
+        sh.y = p.y + 26;
+        const shrink = Math.max(0.2, 1 - Math.min(0.9, p.z * 0.06));
+        sh.setScale(shrink);
+        sh.setAlpha(Math.max(0.08, 1 - p.z * 0.12));
+      });
     }
-    localState[p.name].lastX = p.x;
-    localState[p.name].lastY = p.y;
-    
-    // set target to extrapolated position (where they likely are now)
-    localState[p.name].targetX = p.x + localState[p.name].vx * 0.033;
-    localState[p.name].targetY = p.y + localState[p.name].vy * 0.033;
-    localState[p.name].targetAngle = p.angle;
-    localState[p.name].targetZ = p.z;
-    // exaggerate scale based on vertical height to make jumps look floaty and last longer
-    const scale = 1 + Math.min(1.0, p.z * 0.12);
-    s.setScale(scale);
-    // shadow: position under car (does not rotate), shrink and fade when in the air
-    const sh = obj.shadow;
-    sh.x = p.x;
-    sh.y = p.y + 26;
-    const shrink = Math.max(0.2, 1 - Math.min(0.9, p.z * 0.06));
-    sh.setScale(shrink);
-    sh.setAlpha(Math.max(0.08, 1 - p.z * 0.12));
-  });
-}
 
 function applyInputLocal(state, input, dt) {
   if (!state) return;
@@ -500,7 +771,10 @@ function applyInputLocal(state, input, dt) {
       state.vx *= scale;
       state.vy *= scale;
     }
-    const steerFactor = 3.0 * (1.0 + speed / 300.0);
+    let steerFactor = 2.0 * (1.0 + speed / 300.0);
+    if (input.brake) {
+      steerFactor *= 1.5; // Increase turn speed by 50% when braking (matches backend)
+    }
     state.angle = (state.angle || 0) + input.steer * steerFactor * dt;
     // damping
     const damping = Math.max(0.0, 1.0 - 1.2 * dt);
@@ -523,6 +797,12 @@ function update(time, delta) {
   const jump = Phaser.Input.Keyboard.JustDown(spaceKey);
   const boost = shiftKey.isDown;
   const brake = brakeKey.isDown;
+
+  // Block all input during countdown
+  if (countdownTextObj && countdownTextObj.visible) {
+    // Optionally, you can add a pulsing effect or color change here
+    return;
+  }
   // Halo collision check: if car touches any halo, send boostReset to server
   // Halo positions and radius must match those in create()
   // ...existing code...
@@ -624,6 +904,7 @@ function update(time, delta) {
         }
       }
 
+      // No ball collision debugging tool present; normal gameplay rendering only
       if (key === 'ball') {
         // interpolate z for smooth jump animation
         if (st.targetZ !== undefined) {
@@ -667,8 +948,7 @@ function update(time, delta) {
     }
   });
 }
-
-// ...existing code...
+}
 </script>
 </body>
 </html>
