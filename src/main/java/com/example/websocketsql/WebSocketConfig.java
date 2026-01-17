@@ -20,6 +20,6 @@ public class WebSocketConfig implements WebSocketConfigurer {
     @SuppressWarnings("null")
     public void registerWebSocketHandlers(@NonNull WebSocketHandlerRegistry registry) {
         registry.addHandler(messageHandler, "/ws").setAllowedOrigins("*");
-        registry.addHandler(gameHandler, "/game").setAllowedOrigins("*");
+        registry.addHandler(gameHandler, "/ws").setAllowedOrigins("*");
     }
 }

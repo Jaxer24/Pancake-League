@@ -20,7 +20,7 @@
 <div id="scoreboard-score" style="display:none;position:absolute; left:50%; top:18px; min-width:100px; color:#fff; background:#111; border-radius:12px; padding:8px 16px; font-size:1.5em; font-weight:900; letter-spacing:1px; z-index:12; box-shadow:0 2px 8px #0008; pointer-events:none; text-align:center; transform:translateX(-50%);"></div>
 <!-- Move script to end of body for proper DOM initialization -->
  <script>
-const url = (location.protocol === 'https:') ? 'wss://' + location.host + '/game' : 'ws://' + location.host + '/game';
+const url = (location.protocol === 'https:') ? 'wss://' + location.host + '/ws' : 'ws://' + location.host + '/ws';
 
 // --- Field, goal, and patch dimensions (from index.html) ---
 const fieldX = 120, fieldY = 0, fieldW = 800, fieldH = 600;

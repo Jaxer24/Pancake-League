@@ -19,7 +19,7 @@
 <div id="scoreboard-opp" style="position:absolute; right:18px; top:18px; min-width:100px; color:#fff; background:#FF4136; border-radius:12px; padding:8px 16px; font-size:1.15em; font-weight:900; letter-spacing:1px; z-index:12; box-shadow:0 2px 8px #FF413688; pointer-events:none; text-align:right;"></div>
 <div id="scoreboard-opp-score" style="position:absolute; right:18px; top:54px; min-width:100px; color:#ffff00; background:rgba(0,0,0,0.18); border-radius:8px; font-size:1.15em; font-weight:900; text-shadow:2px 2px 6px #000, 0 0 2px #fff; padding:4px 16px; border:1px solid #fff; letter-spacing:1px; z-index:12; pointer-events:none; text-align:right;"></div>
 <script>
-const url = (location.protocol === 'https:') ? 'wss://' + location.host + '/game' : 'ws://' + location.host + '/game';
+const url = (location.protocol === 'https:') ? 'wss://' + location.host + '/ws' : 'ws://' + location.host + '/ws';
 let name = prompt('Enter a username (1v1)') || ('player'+Math.floor(Math.random()*1000));
 const ws = new WebSocket(url);
 ws.onopen = () => ws.send(JSON.stringify({type:'join', name}));
