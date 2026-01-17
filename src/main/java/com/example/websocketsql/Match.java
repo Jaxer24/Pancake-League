@@ -1,3 +1,4 @@
+
 package com.example.websocketsql;
 
 import org.springframework.web.socket.TextMessage;
@@ -97,10 +98,36 @@ public class Match {
         }
     }
 
+        // Returns true if no players remain in the match
+    public boolean isEmpty() {
+        return sessions.isEmpty() && players.isEmpty();
+    }
+
+    // Remove all players from the match (for cleanup)
+    public void removeAllPlayers() {
+        sessions.clear();
+        players.clear();
+        inputs.clear();
+    }
+
     public void removePlayer(String name) {
         sessions.remove(name);
         players.remove(name);
         inputs.remove(name);
+        // If only one player remains in an active match, declare them the winner
+        if (sessions.size() == 1 && !roundOver) {
+            String winner = sessions.keySet().iterator().next();
+            roundOver = true;
+            StringBuilder sb = new StringBuilder();
+            sb.append('{');
+            sb.append("\"type\":\"gameover\",");
+            sb.append("\"match\":\"").append(id).append("\",");
+            sb.append("\"scoreA\":").append(scoreA).append(",\"scoreB\":").append(scoreB).append(',');
+            sb.append("\"winner\":\"").append(winner).append("\"");
+            sb.append('}');
+            broadcastState(sb.toString());
+            System.out.println("[CLEANUP] Player " + name + " disconnected, declaring " + winner + " as winner for match " + id);
+        }
     }
 
     public void updateInput(String name, PlayerInput in) {
@@ -126,6 +153,12 @@ public class Match {
         long now = System.currentTimeMillis();
         long timerMs = Math.max(0, roundEndTime - now);
         boolean overtime = false;
+
+        // Prevent further state broadcasts after gameover
+        if (roundOver) {
+            return;
+        }
+
         if (!roundFrozen && !roundOver && timerMs <= 0) {
             // If scores are tied, enter overtime (sudden death)
             if (scoreA == scoreB) {

@@ -16,12 +16,82 @@ public class MatchManager {
     private final ConcurrentMap<String, WebSocketSession> pendingSessions = new ConcurrentHashMap<>();
     private final GameRepository repo;
 
+    // Track last activity for each player
+    private final ConcurrentMap<String, Long> lastActive = new ConcurrentHashMap<>();
+    // Track last activity for each match
+    private final ConcurrentMap<String, Long> matchLastActive = new ConcurrentHashMap<>();
+    // Cleanup interval and timeout (ms)
+    private static final long CLEANUP_INTERVAL_MS = 60_000; // 1 min
+    // Separate timeouts for lobby and in-game inactivity
+    private static final long LOBBY_TIMEOUT_MS = 2 * 60_000; // 2 min
+    private static final long INGAME_TIMEOUT_MS = 2 * 60_000; // 2 min
+    private final java.util.concurrent.ScheduledExecutorService cleanupExecutor = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
+
+    {
+        // Start periodic cleanup
+        cleanupExecutor.scheduleAtFixedRate(this::cleanupStaleSessions, CLEANUP_INTERVAL_MS, CLEANUP_INTERVAL_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
+    }
+
     public MatchManager(GameRepository repo) { this.repo = repo; }
+
+    // Remove player from match and all tracking
+    public void removePlayerFromMatch(String name) {
+        Match m = playerMatch.remove(name);
+        if (m != null) {
+            m.removePlayer(name);
+            System.out.println("[CLEANUP] Removed player " + name + " from match " + m.id);
+            // If match is now empty, remove it
+            if (m.isEmpty()) {
+                matches.remove(m.id);
+                matchLastActive.remove(m.id);
+                System.out.println("[CLEANUP] Removed empty match " + m.id);
+            }
+        }
+        pendingSessions.remove(name);
+        lastActive.remove(name);
+        queue.remove(name);
+    }
+
+    // Call this on player activity
+    public void updatePlayerActivity(String name) {
+        lastActive.put(name, System.currentTimeMillis());
+        Match m = playerMatch.get(name);
+        if (m != null) matchLastActive.put(m.id, System.currentTimeMillis());
+    }
+
+    // Cleanup stale sessions and matches
+    private void cleanupStaleSessions() {
+        long now = System.currentTimeMillis();
+        // Clean up players (lobby and in-game)
+        for (String name : lastActive.keySet()) {
+            long last = lastActive.getOrDefault(name, now);
+            boolean inMatch = playerMatch.containsKey(name);
+            long timeout = inMatch ? INGAME_TIMEOUT_MS : LOBBY_TIMEOUT_MS;
+            if (now - last > timeout) {
+                System.out.println("[CLEANUP] Timeout: Removing stale " + (inMatch ? "in-game" : "lobby") + " player " + name);
+                removePlayerFromMatch(name);
+            }
+        }
+        // Clean up matches
+        for (String matchId : matchLastActive.keySet()) {
+            long last = matchLastActive.getOrDefault(matchId, now);
+            if (now - last > INGAME_TIMEOUT_MS) {
+                Match m = matches.remove(matchId);
+                matchLastActive.remove(matchId);
+                if (m != null) {
+                    System.out.println("[CLEANUP] Timeout: Removing stale match " + matchId);
+                    m.removeAllPlayers();
+                }
+            }
+        }
+    }
 
     public synchronized void enqueue(String name, WebSocketSession session) {
         if (playerMatch.containsKey(name)) return;
         pendingSessions.put(name, session);
         queue.add(name);
+
+        updatePlayerActivity(name);
 
         // Check for any existing single-player matches
         String otherWaiting = null;
@@ -66,9 +136,13 @@ public class MatchManager {
 
     public Match getMatchFor(String name) { return playerMatch.get(name); }
 
+    // For cleanup: check if match is empty
+    // (Add this method to Match class if not present)
+
     public void assignSessionToMatch(String name, WebSocketSession session) {
         Match m = playerMatch.get(name);
         if (m != null) m.addPlayer(name, session);
+        updatePlayerActivity(name);
     }
 
 }

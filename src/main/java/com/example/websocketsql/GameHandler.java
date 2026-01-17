@@ -21,6 +21,23 @@ public class GameHandler extends TextWebSocketHandler {
     private final ObjectMapper mapper = new ObjectMapper();
     private final java.util.concurrent.ExecutorService sendExecutor = java.util.concurrent.Executors.newFixedThreadPool(4, r -> { Thread t = new Thread(r, "ws-sender"); t.setDaemon(true); return t; });
 
+    @Override
+    public void afterConnectionClosed(@NonNull WebSocketSession session, @NonNull org.springframework.web.socket.CloseStatus status) throws Exception {
+        // Find player by session and remove
+        String playerToRemove = null;
+        for (Map.Entry<String, WebSocketSession> entry : sessionsByPlayer.entrySet()) {
+            if (entry.getValue().equals(session)) {
+                playerToRemove = entry.getKey();
+                break;
+            }
+        }
+        if (playerToRemove != null) {
+            System.out.println("[CLEANUP] WebSocket closed for player: " + playerToRemove);
+            removePlayer(playerToRemove);
+            matchManager.removePlayerFromMatch(playerToRemove);
+        }
+    }
+
     public GameHandler(GameLoop gameLoop, MatchManager matchManager) {
         this.gameLoop = gameLoop;
         this.matchManager = matchManager;
@@ -40,6 +57,7 @@ public class GameHandler extends TextWebSocketHandler {
             matchManager.enqueue(name, session);
             matchManager.assignSessionToMatch(name, session);
             gameLoop.addPlayer(name); // keep global loop as fallback
+            matchManager.updatePlayerActivity(name);
         } else if ("input".equals(type)) {
             String name = node.get("name").asText();
             int seq = node.has("seq") ? node.get("seq").asInt() : 0;
@@ -53,9 +71,11 @@ public class GameHandler extends TextWebSocketHandler {
             Match m = matchManager.getMatchFor(name);
             if (m != null) {
                 m.updateInput(name, new Match.PlayerInput(seq, throttle, steer, jump, boost, brake));
+                matchManager.updatePlayerActivity(name);
             } else {
                 gameLoop.updateInput(name, in);
             }
+            matchManager.updatePlayerActivity(name);
         } else if ("boostReset".equals(type)) {
             String name = node.get("name").asText();
             // Try to reset boost in match context first
@@ -74,6 +94,7 @@ public class GameHandler extends TextWebSocketHandler {
                         found = true;
                     }
                 } catch (Exception ignored) {}
+                matchManager.updatePlayerActivity(name);
             }
             // If not in match, try global loop
             if (!found) {
@@ -89,12 +110,15 @@ public class GameHandler extends TextWebSocketHandler {
                     }
                 } catch (Exception ignored) {}
             }
+            matchManager.updatePlayerActivity(name);
         } else if ("ballJump".equals(type)) {
             String name = node.get("name").asText();
             Match m = matchManager.getMatchFor(name);
             if (m != null) {
                 m.triggerBallJump();
+                matchManager.updatePlayerActivity(name);
             }
+            matchManager.updatePlayerActivity(name);
         }
     }
 

@@ -389,9 +389,9 @@ function onServerMessage(data) {
   }
 
   // --- WAITING FOR PLAYER OVERLAY ---
-  // Show if only one player is present (no opponent)
+  // Show if only one player is present (no opponent), but NOT during gameover
   let isWaiting = false;
-  if (state.players && state.players.length === 1) {
+  if (state.type !== 'gameover' && state.players && state.players.length === 1) {
     isWaiting = true;
   }
   if (isWaiting) {
